@@ -20,6 +20,7 @@ class DocumentType(str, Enum):
 
     GOOGLE_DOC = "google_doc"
     GOOGLE_SHEET = "google_sheet"
+    GOOGLE_FORM = "google_form"
     PDF = "pdf"
     DOCX = "docx"
     XLSX = "xlsx"
