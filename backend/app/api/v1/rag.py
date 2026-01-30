@@ -409,3 +409,167 @@ async def collect_google_forms(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to collect Google Forms: {str(e)}",
         )
+
+
+class HybridIngestionRequest(BaseModel):
+    """Request schema for hybrid ingestion."""
+    folder_id: str | None = Field(
+        default=None,
+        description="Google Drive folder ID (uses env default if not provided)",
+    )
+    skip_sync: bool = Field(
+        default=False,
+        description="Skip rclone sync step",
+    )
+    parse_documents: bool = Field(
+        default=True,
+        description="Parse documents with Upstage after registration",
+    )
+    parse_limit: int = Field(
+        default=50,
+        description="Maximum number of documents to parse",
+    )
+
+
+class HybridIngestionResponse(BaseModel):
+    """Response schema for hybrid ingestion."""
+    task_id: str
+    success: bool
+    folder_id: str | None
+    sync: dict | None = None
+    forms: dict | None = None
+    files: dict | None = None
+    parsing: dict | None = None
+    error: str | None = None
+
+
+@router.post(
+    "/hybrid-ingest",
+    response_model=HybridIngestionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Run hybrid ingestion pipeline",
+    description="Full pipeline: rclone sync + Google Forms API + Upstage parsing.",
+)
+async def hybrid_ingestion(
+    request: HybridIngestionRequest,
+    db: DbSession,
+    api_key: ApiKey,
+) -> HybridIngestionResponse:
+    """
+    Run full hybrid ingestion pipeline.
+
+    1. **rclone sync**: Download files from Google Drive (docx, xlsx, pdf, etc.)
+    2. **Google Forms API**: Collect URLs for Google Forms (no download)
+    3. **Local scan**: Register all files to database
+    4. **Upstage parsing**: Convert documents to Markdown
+
+    - **folder_id**: Google Drive folder ID
+    - **skip_sync**: Skip rclone sync (use existing local files)
+    - **parse_documents**: Whether to parse with Upstage
+    - **parse_limit**: Max documents to parse in this request
+    """
+    from app.services.ingestion import IngestionService
+
+    task_id = str(uuid.uuid4())
+
+    try:
+        ingestion = IngestionService(
+            data_path="/app/data/raw",
+            processed_path="/app/data/processed",
+            log_path="/app/logs",
+        )
+
+        result = await ingestion.hybrid_ingestion(
+            db=db,
+            folder_id=request.folder_id,
+            skip_sync=request.skip_sync,
+            parse_documents=request.parse_documents,
+            parse_limit=request.parse_limit,
+        )
+
+        return HybridIngestionResponse(
+            task_id=task_id,
+            success=result.get("success", False),
+            folder_id=result.get("folder_id"),
+            sync=result.get("sync"),
+            forms=result.get("forms"),
+            files=result.get("files"),
+            parsing=result.get("parsing"),
+        )
+
+    except Exception as e:
+        logger.error("Hybrid ingestion failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hybrid ingestion failed: {str(e)}",
+        )
+
+
+class ParseDocumentsRequest(BaseModel):
+    """Request schema for document parsing."""
+    limit: int = Field(
+        default=50,
+        description="Maximum number of documents to parse",
+    )
+
+
+class ParseDocumentsResponse(BaseModel):
+    """Response schema for document parsing."""
+    task_id: str
+    success: bool
+    total: int
+    parsed: int
+    failed: int
+    details: dict | None = None
+
+
+@router.post(
+    "/parse",
+    response_model=ParseDocumentsResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Parse pending documents",
+    description="Parse pending documents using Upstage Document Parser.",
+)
+async def parse_documents(
+    request: ParseDocumentsRequest,
+    db: DbSession,
+    api_key: ApiKey,
+) -> ParseDocumentsResponse:
+    """
+    Parse pending documents using Upstage Document Parser.
+
+    Processes documents with status='pending' and converts them to Markdown.
+    Parsed content is saved to data/processed and stored in DB.
+
+    - **limit**: Maximum number of documents to parse
+    """
+    from app.services.ingestion import IngestionService
+
+    task_id = str(uuid.uuid4())
+
+    try:
+        ingestion = IngestionService(
+            data_path="/app/data/raw",
+            processed_path="/app/data/processed",
+        )
+
+        result = await ingestion.parse_pending_documents(db, limit=request.limit)
+
+        return ParseDocumentsResponse(
+            task_id=task_id,
+            success=True,
+            total=result.get("total", 0),
+            parsed=len(result.get("success", [])),
+            failed=len(result.get("failed", [])),
+            details={
+                "success": result.get("success", []),
+                "failed": result.get("failed", []),
+            },
+        )
+
+    except Exception as e:
+        logger.error("Document parsing failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Parsing failed: {str(e)}",
+        )
