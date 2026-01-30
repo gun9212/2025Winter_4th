@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     # Google Cloud Platform
     GOOGLE_CLOUD_PROJECT: str = ""
     GCS_BUCKET_NAME: str = "council-data"
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
 
     # AI Services
     GEMINI_API_KEY: str = ""
