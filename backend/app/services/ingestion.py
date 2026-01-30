@@ -254,6 +254,70 @@ class IngestionService:
         }
         return mime_types.get(extension, "application/octet-stream")
 
+    async def register_google_forms_to_db(
+        self,
+        db: AsyncSession,
+        forms: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """
+        Register Google Forms to the database using their webViewLink.
+
+        Google Forms cannot be downloaded, so we store their URL directly
+        and mark them as COMPLETED (no parsing needed).
+
+        Args:
+            db: Database session.
+            forms: List of Google Form metadata from Google Drive API.
+
+        Returns:
+            Dictionary with counts of new and skipped forms.
+        """
+        # Get existing drive_ids to avoid duplicates
+        existing_result = await db.execute(select(Document.drive_id))
+        existing_ids = set(row[0] for row in existing_result.fetchall() if row[0])
+
+        new_count = 0
+        skipped_count = 0
+
+        for form_info in forms:
+            drive_id = form_info.get("id")
+
+            # Skip if already exists
+            if drive_id in existing_ids:
+                skipped_count += 1
+                continue
+
+            doc = Document(
+                drive_id=drive_id,
+                drive_name=form_info.get("name", "Untitled Form"),
+                drive_path=None,  # No local path for Google Forms
+                mime_type="application/vnd.google-apps.form",
+                doc_type=DocumentType.GOOGLE_FORM,
+                status=DocumentStatus.COMPLETED,  # No processing needed
+                doc_metadata={
+                    "url": form_info.get("webViewLink"),
+                    "is_external": True,
+                    "modified_time": form_info.get("modifiedTime"),
+                    "source": "google_drive_api",
+                },
+            )
+            db.add(doc)
+            new_count += 1
+
+        await db.commit()
+
+        logger.info(
+            "Google Forms registered to database",
+            new_count=new_count,
+            skipped_count=skipped_count,
+        )
+
+        return {
+            "new": new_count,
+            "skipped": skipped_count,
+            "total": len(forms),
+        }
+
     async def full_ingestion(
         self,
         db: AsyncSession,

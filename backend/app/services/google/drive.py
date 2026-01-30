@@ -13,6 +13,7 @@ from app.models.document import DocumentType
 MIME_TYPE_MAPPING: dict[str, DocumentType] = {
     "application/vnd.google-apps.document": DocumentType.GOOGLE_DOC,
     "application/vnd.google-apps.spreadsheet": DocumentType.GOOGLE_SHEET,
+    "application/vnd.google-apps.form": DocumentType.GOOGLE_FORM,
     "application/pdf": DocumentType.PDF,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": DocumentType.DOCX,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": DocumentType.XLSX,
@@ -20,8 +21,14 @@ MIME_TYPE_MAPPING: dict[str, DocumentType] = {
     "application/vnd.ms-excel": DocumentType.XLSX,
 }
 
-# Supported MIME types for ingestion
-SUPPORTED_MIME_TYPES: list[str] = list(MIME_TYPE_MAPPING.keys())
+# Google Forms MIME type (external link only, no download)
+GOOGLE_FORM_MIME_TYPE = "application/vnd.google-apps.form"
+
+# Supported MIME types for ingestion (excluding Google Forms - handled separately)
+SUPPORTED_MIME_TYPES: list[str] = [
+    mime for mime in MIME_TYPE_MAPPING.keys()
+    if mime != GOOGLE_FORM_MIME_TYPE
+]
 
 
 def get_document_type(mime_type: str) -> DocumentType:
@@ -75,7 +82,7 @@ class GoogleDriveService:
                 .list(
                     q=query,
                     spaces="drive",
-                    fields="nextPageToken, files(id, name, mimeType, modifiedTime, size)",
+                    fields="nextPageToken, files(id, name, mimeType, modifiedTime, size, webViewLink)",
                     pageSize=page_size,
                     pageToken=page_token,
                 )
@@ -218,3 +225,68 @@ class GoogleDriveService:
             file["doc_type"] = get_document_type(file.get("mimeType", ""))
 
         return files
+
+    def list_google_forms(
+        self,
+        folder_id: str,
+        recursive: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        List Google Forms in a folder with their webViewLink URLs.
+
+        Google Forms cannot be downloaded, so we only collect their URLs
+        for reference in the knowledge base.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            recursive: Whether to include subfolders.
+
+        Returns:
+            List of Google Form dictionaries with 'webViewLink' and 'doc_type'.
+        """
+        file_types = [GOOGLE_FORM_MIME_TYPE]
+
+        if recursive:
+            forms = self.list_files_recursive(folder_id, file_types=file_types)
+        else:
+            forms = self.list_files(folder_id, file_types=file_types)
+
+        # Add doc_type and ensure webViewLink exists
+        for form in forms:
+            form["doc_type"] = DocumentType.GOOGLE_FORM
+            # webViewLink is included in the API response fields
+
+        return forms
+
+    def list_all_files_with_forms(
+        self,
+        folder_id: str,
+        recursive: bool = True,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        List all files including Google Forms, separated by type.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            recursive: Whether to include subfolders.
+
+        Returns:
+            Dictionary with 'files' (downloadable) and 'forms' (link only).
+        """
+        # Get regular files (downloadable)
+        files = self.list_files_in_folder(
+            folder_id=folder_id,
+            recursive=recursive,
+            supported_only=True,
+        )
+
+        # Get Google Forms (link only)
+        forms = self.list_google_forms(
+            folder_id=folder_id,
+            recursive=recursive,
+        )
+
+        return {
+            "files": files,
+            "forms": forms,
+        }

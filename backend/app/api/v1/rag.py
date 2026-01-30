@@ -332,3 +332,80 @@ async def scan_local_files(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Scan failed: {str(e)}",
         )
+
+
+class GoogleFormsResponse(BaseModel):
+    """Response schema for Google Forms collection."""
+    task_id: str
+    success: bool
+    message: str
+    forms_found: int
+    forms_new: int
+    forms_skipped: int
+
+
+@router.post(
+    "/collect-forms",
+    response_model=GoogleFormsResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Collect Google Forms links",
+    description="Collect Google Forms from Drive folder and store their URLs (no download).",
+)
+async def collect_google_forms(
+    db: DbSession,
+    api_key: ApiKey,
+    folder_id: str | None = None,
+) -> GoogleFormsResponse:
+    """
+    Collect Google Forms links from a Google Drive folder.
+
+    Google Forms cannot be downloaded, so this endpoint only collects
+    their webViewLink URLs and stores them in the database.
+
+    - **folder_id**: Google Drive folder ID (uses env default if not provided)
+    """
+    from app.services.ingestion import IngestionService
+
+    task_id = str(uuid.uuid4())
+
+    # Use provided folder_id or fall back to env default
+    target_folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
+    if not target_folder_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="folder_id is required (either in request or GOOGLE_DRIVE_FOLDER_ID env)",
+        )
+
+    try:
+        # 1. List Google Forms using Google Drive API
+        drive_service = GoogleDriveService()
+        forms = drive_service.list_google_forms(
+            folder_id=target_folder_id,
+            recursive=True,
+        )
+
+        logger.info(
+            "Google Forms found in folder",
+            folder_id=target_folder_id,
+            count=len(forms),
+        )
+
+        # 2. Register forms to database
+        ingestion = IngestionService()
+        register_result = await ingestion.register_google_forms_to_db(db, forms)
+
+        return GoogleFormsResponse(
+            task_id=task_id,
+            success=True,
+            message=f"Google Forms collection complete. {register_result['new']} new, {register_result['skipped']} skipped.",
+            forms_found=len(forms),
+            forms_new=register_result.get("new", 0),
+            forms_skipped=register_result.get("skipped", 0),
+        )
+
+    except Exception as e:
+        logger.error("Google Forms collection failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to collect Google Forms: {str(e)}",
+        )

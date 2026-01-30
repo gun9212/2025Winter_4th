@@ -32,6 +32,12 @@ INCLUDE_PATTERNS=(
     "*.png"
 )
 
+# Exclude patterns: Files that should never be synced
+# Google Forms cannot be exported and would cause errors
+EXCLUDE_PATTERNS=(
+    "*.gform"
+)
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -63,15 +69,20 @@ check_prerequisites() {
     mkdir -p "$(dirname "${LOG_FILE}")"
 }
 
-# Build include arguments (whitelist approach)
-build_include_args() {
-    local include_args=""
+# Build filter arguments (whitelist approach with explicit excludes)
+build_filter_args() {
+    local filter_args=""
+    # First, explicitly exclude problematic patterns (Google Forms, etc.)
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        filter_args="${filter_args} --exclude ${pattern}"
+    done
+    # Then include allowed patterns
     for pattern in "${INCLUDE_PATTERNS[@]}"; do
-        include_args="${include_args} --include ${pattern}"
+        filter_args="${filter_args} --include ${pattern}"
     done
     # Exclude everything else
-    include_args="${include_args} --exclude *"
-    echo "${include_args}"
+    filter_args="${filter_args} --exclude *"
+    echo "${filter_args}"
 }
 
 # Main sync function
@@ -81,8 +92,9 @@ sync_drive() {
     log "INFO" "Folder ID: ${FOLDER_ID}"
     log "INFO" "Local Path: ${LOCAL_PATH}"
     log "INFO" "Allowed extensions: ${INCLUDE_PATTERNS[*]}"
+    log "INFO" "Excluded patterns: ${EXCLUDE_PATTERNS[*]}"
 
-    local include_args=$(build_include_args)
+    local filter_args=$(build_filter_args)
 
     # Run rclone copy with whitelist filtering
     # Using --drive-root-folder-id to specify the folder
@@ -99,7 +111,7 @@ sync_drive() {
         --stats 30s \
         --log-file "${LOG_FILE}" \
         --log-level INFO \
-        ${include_args}
+        ${filter_args}
 
     local exit_code=$?
 
