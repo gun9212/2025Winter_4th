@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= HtmlService.createHtmlOutputFromFile('Styles').getContent(); ?>
+</head>
+<body>
+  <div class="sidebar">
+    <!-- 탭 네비게이션 -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="minutes">
+        <span class="tab-icon">📝</span>
+        <span class="tab-label">회의록</span>
+      </button>
+      <button class="tab-btn" data-tab="search">
+        <span class="tab-icon">🔍</span>
+        <span class="tab-label">검색</span>
+      </button>
+      <button class="tab-btn" data-tab="calendar">
+        <span class="tab-icon">📅</span>
+        <span class="tab-label">일정</span>
+      </button>
+    </div>
+
+    <!-- 회의록 탭 -->
+    <div id="minutes-tab" class="tab-content active">
+      <div class="section">
+        <h3>회의록 자동 생성</h3>
+        <p class="description">현재 문서를 안건지로 사용하여 회의록을 생성합니다.</p>
+
+        <div class="form-group">
+          <label for="transcript">속기록 / 녹취록</label>
+          <textarea id="transcript" rows="8" placeholder="회의 내용을 입력하세요..."></textarea>
+        </div>
+
+        <button id="process-minutes-btn" class="btn btn-primary">
+          회의록 생성
+        </button>
+
+        <div id="minutes-result" class="result-box hidden">
+          <div class="result-header">
+            <span class="status-icon">⏳</span>
+            <span id="minutes-status">처리 중...</span>
+          </div>
+          <div id="minutes-details" class="result-details"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 검색 탭 -->
+    <div id="search-tab" class="tab-content">
+      <div class="section">
+        <h3>지식 DB 검색</h3>
+        <p class="description">학생회 문서에서 정보를 검색합니다.</p>
+
+        <div class="form-group">
+          <label for="search-query">검색어</label>
+          <input type="text" id="search-query" placeholder="검색어를 입력하세요...">
+        </div>
+
+        <div class="form-group">
+          <label for="top-k">결과 개수</label>
+          <select id="top-k">
+            <option value="3">3개</option>
+            <option value="5" selected>5개</option>
+            <option value="10">10개</option>
+          </select>
+        </div>
+
+        <button id="search-btn" class="btn btn-primary">
+          검색
+        </button>
+
+        <div id="search-result" class="result-box hidden">
+          <div class="answer-section">
+            <h4>AI 답변</h4>
+            <div id="search-answer"></div>
+          </div>
+
+          <div class="sources-section">
+            <h4>참고 문서</h4>
+            <ul id="search-sources"></ul>
+          </div>
+
+          <button id="insert-answer-btn" class="btn btn-secondary">
+            문서에 삽입
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 일정 탭 -->
+    <div id="calendar-tab" class="tab-content">
+      <div class="section">
+        <h3>일정 추출 및 등록</h3>
+        <p class="description">문서에서 일정을 추출하여 캘린더에 등록합니다.</p>
+
+        <button id="extract-events-btn" class="btn btn-primary">
+          일정 추출
+        </button>
+
+        <div id="calendar-result" class="result-box hidden">
+          <h4>추출된 일정</h4>
+          <div id="events-list"></div>
+
+          <button id="register-all-btn" class="btn btn-secondary hidden">
+            모두 캘린더에 등록
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 로딩 오버레이 -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="spinner"></div>
+      <p>처리 중...</p>
+    </div>
+  </div>
+
+  <?!= HtmlService.createHtmlOutputFromFile('Scripts').getContent(); ?>
+</body>
+</html>

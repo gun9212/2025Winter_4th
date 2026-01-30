@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: council-ai-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-council}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-council_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-council_ai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-council} -d ${POSTGRES_DB:-council_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: council-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: council-ai-backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-council}:${POSTGRES_PASSWORD:-council_secret}@db:5432/${POSTGRES_DB:-council_ai}
+      - REDIS_URL=redis://redis:6379/0
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/credentials.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: council-ai-celery
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-council}:${POSTGRES_PASSWORD:-council_secret}@db:5432/${POSTGRES_DB:-council_ai}
+      - REDIS_URL=redis://redis:6379/0
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    volumes:
+      - ./backend:/app
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/credentials.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+
+volumes:
+  postgres_data:
+  redis_data:

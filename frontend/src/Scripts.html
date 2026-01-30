@@ -1,0 +1,413 @@
+<script>
+  /**
+   * Council-AI Frontend Scripts
+   */
+
+  // Global state
+  let currentSearchResult = null;
+
+  // DOM Ready
+  document.addEventListener('DOMContentLoaded', function() {
+    initTabs();
+    initMinutesTab();
+    initSearchTab();
+    initCalendarTab();
+  });
+
+  /**
+   * 탭 초기화
+   */
+  function initTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const tabId = this.dataset.tab;
+
+        // 버튼 활성화 상태 변경
+        tabBtns.forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+
+        // 탭 콘텐츠 표시
+        tabContents.forEach(function(content) {
+          content.classList.remove('active');
+        });
+        document.getElementById(tabId + '-tab').classList.add('active');
+      });
+    });
+  }
+
+  /**
+   * 회의록 탭 초기화
+   */
+  function initMinutesTab() {
+    const processBtn = document.getElementById('process-minutes-btn');
+    const transcriptInput = document.getElementById('transcript');
+
+    processBtn.addEventListener('click', function() {
+      const transcript = transcriptInput.value.trim();
+
+      if (!transcript) {
+        showToast('속기록을 입력해주세요.', 'error');
+        return;
+      }
+
+      processMinutes(transcript);
+    });
+  }
+
+  /**
+   * 회의록 처리
+   */
+  function processMinutes(transcript) {
+    showLoading(true);
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+
+        const resultBox = document.getElementById('minutes-result');
+        const statusEl = document.getElementById('minutes-status');
+        const detailsEl = document.getElementById('minutes-details');
+        const statusIcon = resultBox.querySelector('.status-icon');
+
+        resultBox.classList.remove('hidden');
+
+        if (result.success) {
+          statusIcon.textContent = '⏳';
+          statusEl.textContent = '처리 시작됨';
+          detailsEl.textContent = '작업 ID: ' + result.data.task_id;
+
+          // 상태 폴링 시작
+          pollMinutesStatus(result.data.task_id);
+        } else {
+          statusIcon.textContent = '❌';
+          statusEl.textContent = '오류 발생';
+          detailsEl.textContent = result.error;
+        }
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        showToast('오류: ' + error.message, 'error');
+      })
+      .processMinutes(transcript);
+  }
+
+  /**
+   * 회의록 상태 폴링
+   */
+  function pollMinutesStatus(taskId) {
+    const statusEl = document.getElementById('minutes-status');
+    const detailsEl = document.getElementById('minutes-details');
+    const statusIcon = document.querySelector('#minutes-result .status-icon');
+
+    const poll = function() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            const data = result.data;
+
+            if (data.status === 'completed') {
+              statusIcon.textContent = '✅';
+              statusEl.textContent = '완료!';
+              detailsEl.innerHTML =
+                '<p>결과 문서가 생성되었습니다.</p>' +
+                '<a href="' + data.result_doc_url + '" target="_blank">문서 열기</a>';
+              showToast('회의록이 생성되었습니다!', 'success');
+            } else if (data.status === 'failed') {
+              statusIcon.textContent = '❌';
+              statusEl.textContent = '실패';
+              detailsEl.textContent = data.error || '알 수 없는 오류';
+            } else {
+              statusEl.textContent = '처리 중... ' + data.progress + '%';
+              setTimeout(poll, 2000);
+            }
+          }
+        })
+        .withFailureHandler(function() {
+          setTimeout(poll, 5000);
+        })
+        .getMinutesStatus(taskId);
+    };
+
+    setTimeout(poll, 2000);
+  }
+
+  /**
+   * 검색 탭 초기화
+   */
+  function initSearchTab() {
+    const searchBtn = document.getElementById('search-btn');
+    const insertBtn = document.getElementById('insert-answer-btn');
+    const queryInput = document.getElementById('search-query');
+
+    searchBtn.addEventListener('click', function() {
+      const query = queryInput.value.trim();
+      const topK = parseInt(document.getElementById('top-k').value);
+
+      if (!query) {
+        showToast('검색어를 입력해주세요.', 'error');
+        return;
+      }
+
+      performSearch(query, topK);
+    });
+
+    // 엔터 키로 검색
+    queryInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        searchBtn.click();
+      }
+    });
+
+    insertBtn.addEventListener('click', function() {
+      if (currentSearchResult) {
+        insertSearchResult();
+      }
+    });
+  }
+
+  /**
+   * 검색 수행
+   */
+  function performSearch(query, topK) {
+    showLoading(true);
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+
+        const resultBox = document.getElementById('search-result');
+        const answerEl = document.getElementById('search-answer');
+        const sourcesEl = document.getElementById('search-sources');
+
+        if (result.success) {
+          const data = result.data;
+          currentSearchResult = data;
+
+          resultBox.classList.remove('hidden');
+
+          // 답변 표시
+          answerEl.textContent = data.answer || '관련 정보를 찾을 수 없습니다.';
+
+          // 소스 표시
+          sourcesEl.innerHTML = '';
+          if (data.sources && data.sources.length > 0) {
+            data.sources.forEach(function(source) {
+              const li = document.createElement('li');
+              const a = document.createElement('a');
+              a.href = source.url || '#';
+              a.target = '_blank';
+              a.textContent = source.document_name;
+              li.appendChild(a);
+              sourcesEl.appendChild(li);
+            });
+          } else {
+            sourcesEl.innerHTML = '<li>참고 문서 없음</li>';
+          }
+
+          // 제휴 정보 표시
+          if (data.partner_info) {
+            showPartnerInfo(data.partner_info);
+          }
+        } else {
+          showToast('검색 실패: ' + result.error, 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        showToast('오류: ' + error.message, 'error');
+      })
+      .searchKnowledge(query, topK);
+  }
+
+  /**
+   * 제휴 정보 표시
+   */
+  function showPartnerInfo(info) {
+    const resultBox = document.getElementById('search-result');
+
+    // 기존 제휴 정보 제거
+    const existingInfo = resultBox.querySelector('.partner-info');
+    if (existingInfo) {
+      existingInfo.remove();
+    }
+
+    const div = document.createElement('div');
+    div.className = 'partner-info';
+    div.innerHTML =
+      '<h5>🎁 제휴 업체 정보</h5>' +
+      '<p><strong>' + info.name + '</strong></p>' +
+      '<p>할인: ' + info.discount + '</p>' +
+      '<p>문의: ' + info.contact + '</p>';
+
+    resultBox.appendChild(div);
+  }
+
+  /**
+   * 검색 결과 문서에 삽입
+   */
+  function insertSearchResult() {
+    if (!currentSearchResult) return;
+
+    showLoading(true);
+
+    google.script.run
+      .withSuccessHandler(function() {
+        showLoading(false);
+        showToast('문서에 삽입되었습니다.', 'success');
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        showToast('삽입 실패: ' + error.message, 'error');
+      })
+      .insertSearchResult(
+        currentSearchResult.answer,
+        currentSearchResult.sources
+      );
+  }
+
+  /**
+   * 캘린더 탭 초기화
+   */
+  function initCalendarTab() {
+    const extractBtn = document.getElementById('extract-events-btn');
+    const registerAllBtn = document.getElementById('register-all-btn');
+
+    extractBtn.addEventListener('click', function() {
+      extractEvents();
+    });
+
+    registerAllBtn.addEventListener('click', function() {
+      registerAllEvents();
+    });
+  }
+
+  /**
+   * 일정 추출
+   */
+  function extractEvents() {
+    showLoading(true);
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        showLoading(false);
+
+        const resultBox = document.getElementById('calendar-result');
+        const eventsListEl = document.getElementById('events-list');
+        const registerBtn = document.getElementById('register-all-btn');
+
+        if (result.success) {
+          const events = result.data.events || [];
+
+          resultBox.classList.remove('hidden');
+          eventsListEl.innerHTML = '';
+
+          if (events.length > 0) {
+            registerBtn.classList.remove('hidden');
+
+            events.forEach(function(event, index) {
+              const div = document.createElement('div');
+              div.className = 'event-item';
+              div.dataset.index = index;
+              div.innerHTML =
+                '<div class="event-title">' + event.title + '</div>' +
+                '<div class="event-date">' + event.date + (event.time ? ' ' + event.time : '') + '</div>' +
+                '<div class="event-actions">' +
+                  '<button class="btn btn-secondary register-single-btn">등록</button>' +
+                '</div>';
+              eventsListEl.appendChild(div);
+            });
+
+            // 개별 등록 버튼 이벤트
+            eventsListEl.querySelectorAll('.register-single-btn').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                const index = parseInt(this.closest('.event-item').dataset.index);
+                registerEvent(events[index], this);
+              });
+            });
+          } else {
+            eventsListEl.innerHTML = '<p>추출된 일정이 없습니다.</p>';
+            registerBtn.classList.add('hidden');
+          }
+        } else {
+          showToast('일정 추출 실패: ' + result.error, 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        showLoading(false);
+        showToast('오류: ' + error.message, 'error');
+      })
+      .extractCalendarEvents();
+  }
+
+  /**
+   * 단일 이벤트 등록
+   */
+  function registerEvent(event, btn) {
+    btn.disabled = true;
+    btn.textContent = '등록 중...';
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          btn.textContent = '등록됨 ✓';
+          btn.classList.add('success');
+          showToast('일정이 등록되었습니다.', 'success');
+        } else {
+          btn.disabled = false;
+          btn.textContent = '등록';
+          showToast('등록 실패: ' + result.error, 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        btn.disabled = false;
+        btn.textContent = '등록';
+        showToast('오류: ' + error.message, 'error');
+      })
+      .createCalendarEvent(event);
+  }
+
+  /**
+   * 모든 이벤트 등록
+   */
+  function registerAllEvents() {
+    const btns = document.querySelectorAll('.register-single-btn:not(:disabled)');
+    btns.forEach(function(btn) {
+      btn.click();
+    });
+  }
+
+  /**
+   * 로딩 표시
+   */
+  function showLoading(show) {
+    const overlay = document.getElementById('loading-overlay');
+    if (show) {
+      overlay.classList.remove('hidden');
+    } else {
+      overlay.classList.add('hidden');
+    }
+  }
+
+  /**
+   * 토스트 메시지 표시
+   */
+  function showToast(message, type) {
+    // 기존 토스트 제거
+    const existing = document.querySelector('.toast');
+    if (existing) {
+      existing.remove();
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + (type || '');
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(function() {
+      toast.remove();
+    }, 3000);
+  }
+</script>
