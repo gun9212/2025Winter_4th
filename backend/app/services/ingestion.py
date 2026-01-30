@@ -235,38 +235,80 @@ class IngestionService:
 
     def scan_local_files(self) -> list[dict[str, Any]]:
         """
-        Scan local data directory for synced files.
+        Scan local data directory for synced files recursively.
 
         Returns:
             List of file metadata dictionaries.
         """
         files = []
 
+        logger.info(
+            "Starting file scan",
+            data_path=str(self.data_path),
+            exists=self.data_path.exists(),
+        )
+
         if not self.data_path.exists():
             logger.warning("Data path does not exist", path=str(self.data_path))
             return files
 
-        for file_path in self.data_path.rglob("*"):
+        # List all subdirectories first for debugging
+        subdirs = [d for d in self.data_path.rglob("*") if d.is_dir()]
+        logger.info(
+            "Found subdirectories",
+            count=len(subdirs),
+            dirs=[str(d.relative_to(self.data_path)) for d in subdirs[:10]],
+        )
+
+        # Scan all files recursively using rglob
+        all_items = list(self.data_path.rglob("*"))
+        logger.info("Total items found (files + dirs)", count=len(all_items))
+
+        for file_path in all_items:
+            # Skip directories
             if not file_path.is_file():
                 continue
 
             extension = file_path.suffix.lower()
+
+            # Log each file found (for debugging)
+            relative_path = str(file_path.relative_to(self.data_path))
+            logger.debug(
+                "Found file",
+                path=relative_path,
+                extension=extension,
+                supported=extension in SUPPORTED_EXTENSIONS,
+            )
+
             if extension not in SUPPORTED_EXTENSIONS:
                 continue
 
             stat = file_path.stat()
 
-            files.append({
+            file_info = {
                 "name": file_path.name,
-                "path": str(file_path.relative_to(self.data_path)),
+                "path": relative_path,
                 "full_path": str(file_path),
                 "extension": extension,
                 "doc_type": EXTENSION_TO_DOCTYPE.get(extension, DocumentType.OTHER),
                 "size": stat.st_size,
                 "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            })
+            }
+            files.append(file_info)
 
-        logger.info("Scanned local files", count=len(files))
+            logger.info(
+                "Added file to scan results",
+                name=file_path.name,
+                path=relative_path,
+                doc_type=file_info["doc_type"].value if hasattr(file_info["doc_type"], 'value') else str(file_info["doc_type"]),
+            )
+
+        logger.info(
+            "File scan completed",
+            total_files=len(files),
+            by_extension={ext: sum(1 for f in files if f["extension"] == ext) for ext in set(f["extension"] for f in files)},
+        )
+
         return files
 
     async def register_files_to_db(
@@ -274,16 +316,7 @@ class IngestionService:
         db: AsyncSession,
         files: list[dict[str, Any]],
     ) -> dict[str, int]:
-        """
-        Register scanned files to the database.
-
-        Args:
-            db: Database session.
-            files: List of file metadata from scan_local_files().
-
-        Returns:
-            Dictionary with counts of new and skipped files.
-        """
+        # 1. 기존 DB에 등록된 '경로'들을 싹 가져와서 중복 검사 준비
         existing_result = await db.execute(select(Document.drive_path))
         existing_paths = set(row[0] for row in existing_result.fetchall() if row[0])
 
@@ -291,23 +324,25 @@ class IngestionService:
         skipped_count = 0
 
         for file_info in files:
-            file_path = file_info["path"]
+            file_path = file_info["path"]  # '1차 회의/안건지.pdf' 형태의 상대경로
 
+            # 중복 체크
             if file_path in existing_paths:
                 skipped_count += 1
                 continue
 
+            # 중요: drive_id를 경로 기반으로 생성하여 유니크하게 관리
             drive_id = f"local:{file_path}"
 
             doc = Document(
                 drive_id=drive_id,
                 drive_name=file_info["name"],
-                drive_path=file_path,
+                drive_path=file_path,  # 하위 폴더 포함 경로 저장
                 mime_type=self._get_mime_type(file_info["extension"]),
                 doc_type=file_info["doc_type"],
                 status=DocumentStatus.PENDING,
                 doc_metadata={
-                    "full_path": file_info["full_path"],
+                    "full_path": file_info["full_path"], # 실제 VM 내 절대 경로
                     "size": file_info["size"],
                     "modified_time": file_info["modified_time"],
                     "source": "rclone_sync",
@@ -317,15 +352,8 @@ class IngestionService:
             new_count += 1
 
         await db.commit()
-
-        logger.info(
-            "Files registered to database",
-            new_count=new_count,
-            skipped_count=skipped_count,
-        )
-
+        logger.info("DB 등록 완료", new=new_count, skipped=skipped_count)
         return {"new": new_count, "skipped": skipped_count, "total": len(files)}
-
     async def register_google_forms_to_db(
         self,
         db: AsyncSession,
