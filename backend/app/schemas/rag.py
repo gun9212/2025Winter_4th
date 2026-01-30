@@ -19,9 +19,9 @@ class FileType(str, Enum):
 class IngestRequest(BaseModel):
     """Request schema for document ingestion."""
 
-    folder_id: str = Field(
-        ...,
-        description="Google Drive folder ID to ingest",
+    folder_id: str | None = Field(
+        default=None,
+        description="Google Drive folder ID to ingest (uses env default if not provided)",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
     recursive: bool = Field(

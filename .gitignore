@@ -59,7 +59,12 @@ docker-compose.override.yml
 
 # Logs
 *.log
-logs/
+logs/*
+!logs/.gitkeep
+
+# Synced data
+data/raw/*
+!data/raw/.gitkeep
 
 # Temporary files
 tmp/

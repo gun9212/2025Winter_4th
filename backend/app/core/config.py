@@ -57,12 +57,12 @@ class Settings(BaseSettings):
     # Google Cloud Platform
     GOOGLE_CLOUD_PROJECT: str = ""
     GCS_BUCKET_NAME: str = "council-data"
-    
+    GOOGLE_DRIVE_FOLDER_ID: str = ""
+
     # Vertex AI Configuration
-    # TODO: Add VERTEX_AI_LOCATION to .env (e.g., asia-northeast3, us-central1)
     VERTEX_AI_LOCATION: str = "asia-northeast3"
     VERTEX_AI_EMBEDDING_MODEL: str = "text-embedding-004"
-    VERTEX_AI_EMBEDDING_DIMENSION: int = 768  # text-embedding-004 dimension
+    VERTEX_AI_EMBEDDING_DIMENSION: int = 768
 
     # AI Services
     GEMINI_API_KEY: str = ""
