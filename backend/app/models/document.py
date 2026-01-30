@@ -66,7 +66,7 @@ class Document(Base, TimestampMixin):
     parsed_content: Mapped[str | None] = mapped_column(Text)
 
     # Metadata (JSON for flexibility)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    doc_metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Processing info
     error_message: Mapped[str | None] = mapped_column(Text)

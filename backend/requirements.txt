@@ -1,41 +1,41 @@
 # Web Framework
-fastapi==0.109.2
-uvicorn[standard]==0.27.1
-python-multipart==0.0.9
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
 
 # Database
-asyncpg==0.29.0
-sqlalchemy[asyncio]==2.0.25
-pgvector==0.2.5
-alembic==1.13.1
+asyncpg>=0.29.0
+sqlalchemy[asyncio]>=2.0.25
+pgvector>=0.2.5
+alembic>=1.13.0
 
 # Task Queue
-celery[redis]==5.3.6
-redis==5.0.1
+celery[redis]>=5.3.6
+redis>=5.0.1
 
 # Google Cloud
-google-auth==2.27.0
-google-auth-oauthlib==1.2.0
-google-api-python-client==2.118.0
-google-cloud-storage==2.14.0
+google-auth>=2.27.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.118.0
+google-cloud-storage>=2.14.0
 
 # AI/ML
-google-generativeai==0.4.0
-langchain==0.1.6
-langchain-google-genai==0.0.6
-httpx==0.26.0
+google-generativeai>=0.5.0
+langchain>=0.1.0
+langchain-text-splitters>=0.2.0
+langchain-google-genai>=1.0.0
+httpx>=0.26.0
 
 # Data Processing
-pydantic==2.6.1
-pydantic-settings==2.1.0
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
 
 # Testing
-pytest==8.0.0
-pytest-asyncio==0.23.4
-pytest-cov==4.1.0
-httpx==0.26.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
 
 # Utilities
-python-dotenv==1.0.1
-tenacity==8.2.3
-structlog==24.1.0
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+structlog>=24.1.0
