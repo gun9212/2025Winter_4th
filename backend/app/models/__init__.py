@@ -1,6 +1,7 @@
 """SQLAlchemy models for Council-AI."""
 
 from app.models.base import Base, TimestampMixin
+from app.models.chat import ChatLog
 from app.models.document import (
     Document,
     DocumentCategory,
@@ -15,6 +16,7 @@ from app.models.reference import Reference
 __all__ = [
     "Base",
     "TimestampMixin",
+    "ChatLog",
     "Document",
     "DocumentCategory",
     "DocumentStatus",
@@ -26,3 +28,4 @@ __all__ = [
     "EventStatus",
     "Reference",
 ]
+

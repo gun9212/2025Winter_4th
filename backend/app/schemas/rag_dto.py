@@ -16,21 +16,49 @@ class FileType(str, Enum):
     XLSX = "xlsx"
 
 
+class IngestOptions(BaseModel):
+    """Options for folder ingestion."""
+
+    is_privacy_sensitive: bool = Field(
+        default=False,
+        description="If true, files are stored as references only (no embedding)",
+    )
+    recursive: bool = Field(
+        default=True,
+        description="Whether to process subfolders recursively",
+    )
+    file_types: list[FileType] | None = Field(
+        default=None,
+        description="File types to process (None = all supported types)",
+    )
+    exclude_patterns: list[str] = Field(
+        default=["*.tmp", "~*"],
+        description="Glob patterns for files to exclude",
+    )
+
+
 class IngestRequest(BaseModel):
-    """Request schema for document ingestion."""
+    """Request schema for document ingestion.
+    
+    Note: event_id is NOT included per Ground Truth requirement.
+    Event mapping happens at chunk level during enrichment step,
+    not at ingestion time.
+    """
 
     folder_id: str | None = Field(
         default=None,
         description="Google Drive folder ID to ingest (uses env default if not provided)",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
-    recursive: bool = Field(
-        default=True,
-        description="Whether to process subfolders",
+    options: IngestOptions = Field(
+        default_factory=IngestOptions,
+        description="Ingestion options",
     )
-    file_types: list[FileType] | None = Field(
-        default=None,
-        description="File types to process (None = all supported types)",
+    user_level: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="User access level for permission check",
     )
 
 

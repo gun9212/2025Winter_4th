@@ -57,17 +57,25 @@ class Settings(BaseSettings):
     # Google Cloud Platform
     GOOGLE_CLOUD_PROJECT: str = ""
     GCS_BUCKET_NAME: str = "council-data"
-    GOOGLE_DRIVE_FOLDER_ID: str = ""
-
+    
     # Vertex AI Configuration
-    VERTEX_AI_LOCATION: str = "asia-northeast3"
+    # TODO: Add VERTEX_AI_LOCATION to .env (e.g., asia-northeast3, us-central1)
+    VERTEX_AI_LOCATION: str = "asia-northeast2"
     VERTEX_AI_EMBEDDING_MODEL: str = "text-embedding-004"
-    VERTEX_AI_EMBEDDING_DIMENSION: int = 768
+    VERTEX_AI_EMBEDDING_DIMENSION: int = 768  # text-embedding-004 dimension
 
     # AI Services
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"  # Updated to Gemini 2.0 Flash
     UPSTAGE_API_KEY: str = ""
+
+    # Google Drive Ingestion (from teammate's ingestion.py)
+    GOOGLE_DRIVE_FOLDER_ID: str = ""  # Default folder ID for ingestion
+    
+    # Data Paths (for local ingestion pipeline)
+    DATA_RAW_PATH: str = "/app/data/raw"  # rclone sync destination
+    DATA_PROCESSED_PATH: str = "/app/data/processed"  # Parsed output
+    LOGS_PATH: str = "/app/logs"  # Log files
 
     # Celery
     CELERY_BROKER_URL: str = ""

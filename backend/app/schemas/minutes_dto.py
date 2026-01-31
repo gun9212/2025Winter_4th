@@ -15,30 +15,73 @@ class ProcessingStatus(str, Enum):
     FAILED = "failed"
 
 
+class MeetingInfo(BaseModel):
+    """Meeting information for minutes generation."""
+
+    meeting_name: str = Field(
+        ...,
+        description="Meeting name (e.g., '제7차 국장단회의')",
+        examples=["제7차 국장단회의", "제2차 정기총회"],
+    )
+    meeting_date: date = Field(
+        ...,
+        description="Date of the meeting",
+    )
+    attendees: list[str] = Field(
+        default_factory=list,
+        description="List of meeting attendees",
+        examples=[["회장 홍길동", "부회장 임태빈", "문화국장 김철수"]],
+    )
+    department: str | None = Field(
+        default=None,
+        description="Department (e.g., '집행위원회', '문화국')",
+    )
+
+
+class OutputConfig(BaseModel):
+    """Output configuration for generated document."""
+
+    output_folder_id: str | None = Field(
+        default=None,
+        description="Google Drive folder ID for output document",
+    )
+    naming_format: str = Field(
+        default="[결과지] {meeting_name}",
+        description="Naming format for output document",
+    )
+
+
 class MinutesProcessRequest(BaseModel):
-    """Request schema for processing meeting minutes."""
+    """Request schema for processing meeting minutes (Smart Minutes)."""
 
     agenda_doc_id: str = Field(
         ...,
         description="Google Docs ID of the agenda template",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
-    transcript: str = Field(
+    transcript_text: str = Field(
         ...,
         description="Meeting transcript or recording text",
         min_length=10,
+        alias="transcript",  # Backward compatibility
     )
-    meeting_date: date | None = Field(
+    result_template_doc_id: str | None = Field(
         default=None,
-        description="Date of the meeting",
+        description="Google Docs ID of the result template (optional)",
     )
-    attendees: list[str] | None = Field(
-        default=None,
-        description="List of meeting attendees",
+    meeting_info: MeetingInfo = Field(
+        ...,
+        description="Meeting information",
     )
-    output_folder_id: str | None = Field(
-        default=None,
-        description="Google Drive folder ID for output document",
+    output_config: OutputConfig = Field(
+        default_factory=OutputConfig,
+        description="Output configuration",
+    )
+    user_level: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="User access level",
     )
 
 

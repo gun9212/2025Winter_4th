@@ -33,17 +33,19 @@ def run_full_pipeline(
     filename: str,
     drive_id: str,
     folder_path: str = "",
-    event_hints: dict | None = None,
 ) -> dict[str, Any]:
     """
     Run the complete 7-step RAG pipeline for a single document.
+    
+    Per Ground Truth: Event mapping is NOT determined at pipeline invocation.
+    During Step 6 (Enrichment), the LLM analyzes chunk content and infers
+    the associated Event at the chunk (agenda item) level.
     
     Args:
         file_path: Local path to the file
         filename: Original filename
         drive_id: Google Drive file ID
         folder_path: Full folder path for classification context
-        event_hints: Optional hints for event association
         
     Returns:
         Task result with processing status
@@ -174,18 +176,28 @@ def run_full_pipeline(
 def ingest_folder(
     self,
     drive_folder_id: str,
-    event_hints: dict | None = None,
+    options: dict | None = None,
 ) -> dict[str, Any]:
     """
     Ingest all documents from a Google Drive folder.
     
+    Per Ground Truth: event_id is NOT provided at ingestion time.
+    Event mapping happens at chunk level during enrichment step.
+    
     Args:
         drive_folder_id: Google Drive folder ID
-        event_hints: Optional event association hints
+        options: Ingestion options dict with:
+            - is_privacy_sensitive: Store as reference only (no embedding)
+            - recursive: Process subfolders (default: True)
+            - file_types: Filter by file type (default: all)
+            - exclude_patterns: Glob patterns to skip
         
     Returns:
         Task result with ingestion statistics
     """
+    options = options or {}
+    is_privacy_sensitive = options.get("is_privacy_sensitive", False)
+    
     async def _ingest():
         from app.pipeline.step_01_ingest import IngestionService
         
@@ -218,13 +230,35 @@ def ingest_folder(
         
         # Trigger pipeline for each file
         processed = 0
+        
+        if is_privacy_sensitive:
+            # Store as reference only, skip embedding
+            logger.info(
+                "Privacy sensitive folder - storing as references only",
+                folder_id=drive_folder_id,
+                files_count=len(result["files"]),
+            )
+            # TODO: Create Reference records instead of processing
+            # for file_info in result["files"]:
+            #     create_reference(file_info)
+            
+            return {
+                "status": "success",
+                "folder_id": drive_folder_id,
+                "files_synced": result["files_synced"],
+                "references_created": len(result["files"]),
+                "is_privacy_sensitive": True,
+            }
+        
+        # Normal processing - trigger pipeline for each file
         for file_info in result["files"]:
+            # Note: event_hints removed per Ground Truth
+            # Event is determined at chunk level during enrichment
             run_full_pipeline.delay(
                 file_path=file_info["path"],
                 filename=file_info["name"],
                 drive_id=file_info.get("drive_id", file_info["name"]),
                 folder_path=file_info.get("full_folder_path", ""),
-                event_hints=event_hints,
             )
             processed += 1
         

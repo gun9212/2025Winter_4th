@@ -12,6 +12,7 @@ from app.core.config import settings
 
 if TYPE_CHECKING:
     from app.models.document import Document
+    from app.models.event import Event
 
 # Vertex AI text-embedding-004 dimension
 EMBEDDING_DIMENSION = settings.VERTEX_AI_EMBEDDING_DIMENSION  # 768
@@ -24,6 +25,11 @@ class DocumentChunk(Base, TimestampMixin):
     Implements Parent-Child chunking strategy:
         - Parent chunks: Entire agenda items with full context
         - Child chunks: Smaller segments for precise vector search
+    
+    Event Mapping (N:M Relationship):
+        - Event is determined at CHUNK level, not document level
+        - One document may contain multiple agenda items for different events
+        - LLM infers event from chunk content during enrichment step
     
     Search Flow:
         1. User query → embed → search child chunks (high precision)
@@ -40,6 +46,18 @@ class DocumentChunk(Base, TimestampMixin):
         ForeignKey("documents.id", ondelete="CASCADE"),
         index=True,
     )
+
+    # ⭐ NEW: Chunk-level Event mapping (N:M relationship support)
+    # Event is determined per agenda item (chunk), not per document
+    related_event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("events.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    
+    # LLM-inferred event title (before Event matching)
+    # Used when exact Event record doesn't exist yet
+    inferred_event_title: Mapped[str | None] = mapped_column(String(500))
 
     # Parent-Child relationship (Step 5)
     parent_chunk_id: Mapped[int | None] = mapped_column(
@@ -89,6 +107,13 @@ class DocumentChunk(Base, TimestampMixin):
         back_populates="chunks",
     )
     
+    # ⭐ NEW: Event relationship at chunk level
+    related_event: Mapped["Event | None"] = relationship(
+        "Event",
+        back_populates="related_chunks",
+        foreign_keys=[related_event_id],
+    )
+    
     # Self-referential relationship for parent-child
     parent_chunk: Mapped["DocumentChunk | None"] = relationship(
         "DocumentChunk",
@@ -104,4 +129,6 @@ class DocumentChunk(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         chunk_type = "Parent" if self.is_parent else "Child"
-        return f"<DocumentChunk(id={self.id}, doc_id={self.document_id}, type={chunk_type}, index={self.chunk_index})>"
+        event_info = f", event={self.related_event_id}" if self.related_event_id else ""
+        return f"<DocumentChunk(id={self.id}, doc_id={self.document_id}, type={chunk_type}{event_info})>"
+

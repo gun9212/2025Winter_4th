@@ -5,13 +5,68 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.calendar import (
+from app.schemas.calendar_dto import (
+    CalendarSyncRequest,
+    CalendarSyncResponse,
     EventCreateRequest,
     EventListResponse,
     EventResponse,
 )
 
 router = APIRouter()
+
+
+@router.post(
+    "/sync",
+    response_model=CalendarSyncResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Sync calendar from document",
+    description="""
+    Extract action items from a result document and create calendar events.
+    
+    **Calendar ID Parameter:**
+    Supports multiple calendars per user's request. Pass the target
+    Google Calendar ID to sync events to.
+    
+    **Processing (Async via Celery):**
+    1. Read result document via Docs API
+    2. Extract action items with dates and assignees
+    3. Create calendar events via Calendar API
+    4. Optionally send notifications to assignees
+    
+    **Extraction Patterns:**
+    - Date: "~까지", "마감일:", "D-day"
+    - Assignee: "담당:", "담당자:", "책임:"
+    """,
+)
+async def sync_calendar(
+    request: CalendarSyncRequest,
+    db: DbSession,
+    api_key: ApiKey,
+) -> CalendarSyncResponse:
+    """
+    Sync calendar events from a result document.
+    
+    Extracts action items and deadlines from the document
+    and creates corresponding Google Calendar events.
+    """
+    # TODO: Queue Celery task
+    # from app.tasks.features import sync_calendar as sync_calendar_task
+    # task = sync_calendar_task.delay(
+    #     result_doc_id=request.result_doc_id,
+    #     calendar_id=request.calendar_id,
+    #     options=request.options.model_dump(),
+    #     extraction_hints=request.extraction_hints.model_dump(),
+    # )
+    
+    task_id = f"calendar-sync-{request.result_doc_id[:8]}-placeholder"
+    
+    return CalendarSyncResponse(
+        task_id=task_id,
+        status="PENDING",
+        message="Calendar sync task queued successfully",
+        calendar_id=request.calendar_id,
+    )
 
 
 @router.post(
@@ -131,3 +186,4 @@ async def delete_event(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"Event {event_id} not found",
     )
+

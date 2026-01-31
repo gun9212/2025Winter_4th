@@ -77,10 +77,13 @@ class Document(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    # Event association (Step 6: event_id FK)
+    # Event association - NULLABLE: Event is determined at Chunk level, not Document level
+    # Per domain requirement: "1 file ≠ 1 event" 
+    # Document may contain multiple agenda items for different events
     event_id: Mapped[int | None] = mapped_column(
         ForeignKey("events.id", ondelete="SET NULL"),
         index=True,
+        nullable=True,  # Explicitly nullable - event mapping happens at chunk level
     )
 
     # Google Drive metadata
