@@ -74,7 +74,7 @@ class DocumentChunk(Base, TimestampMixin):
     access_level: Mapped[int | None] = mapped_column(Integer, index=True)
 
     # Additional metadata
-    metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    chunk_metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Token count for context management
     token_count: Mapped[int | None] = mapped_column(Integer)

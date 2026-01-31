@@ -74,10 +74,10 @@ class GeminiService:
         Returns:
             Dictionary with decisions, action_items, and summary.
         """
+        agenda_section = f"회의 안건지:\n{agenda}\n\n" if agenda else ""
         prompt = f"""다음 회의 속기록을 분석하여 결정 사항과 액션 아이템을 추출해주세요.
 
-{f"회의 안건지:\n{agenda}\n\n" if agenda else ""}
-회의 속기록:
+{agenda_section}회의 속기록:
 {transcript}
 
 다음 형식으로 JSON 응답을 해주세요:

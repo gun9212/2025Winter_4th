@@ -3,11 +3,30 @@
 import io
 from typing import Any
 
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 from app.core.security import get_google_credentials
+from app.models.document import DocumentType
+
+# Google MIME Type to DocumentType mapping
+MIME_TYPE_MAPPING: dict[str, DocumentType] = {
+    "application/vnd.google-apps.document": DocumentType.GOOGLE_DOC,
+    "application/vnd.google-apps.spreadsheet": DocumentType.GOOGLE_SHEET,
+    "application/pdf": DocumentType.PDF,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": DocumentType.DOCX,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": DocumentType.XLSX,
+    "application/msword": DocumentType.DOCX,
+    "application/vnd.ms-excel": DocumentType.XLSX,
+}
+
+# Supported MIME types for ingestion
+SUPPORTED_MIME_TYPES: list[str] = list(MIME_TYPE_MAPPING.keys())
+
+
+def get_document_type(mime_type: str) -> DocumentType:
+    """Convert Google MIME type to DocumentType enum."""
+    return MIME_TYPE_MAPPING.get(mime_type, DocumentType.OTHER)
 
 
 class GoogleDriveService:
@@ -169,3 +188,33 @@ class GoogleDriveService:
             )
             .execute()
         )
+
+    def list_files_in_folder(
+        self,
+        folder_id: str,
+        recursive: bool = True,
+        supported_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        List files in a folder with DocumentType mapping.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            recursive: Whether to include subfolders.
+            supported_only: Filter to only supported MIME types.
+
+        Returns:
+            List of file dictionaries with 'doc_type' field added.
+        """
+        file_types = SUPPORTED_MIME_TYPES if supported_only else None
+
+        if recursive:
+            files = self.list_files_recursive(folder_id, file_types=file_types)
+        else:
+            files = self.list_files(folder_id, file_types=file_types)
+
+        # Add doc_type field to each file
+        for file in files:
+            file["doc_type"] = get_document_type(file.get("mimeType", ""))
+
+        return files

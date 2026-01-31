@@ -43,6 +43,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - DEBUG=${DEBUG:-true}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
     ports:
       - "8000:8000"
     volumes:
@@ -67,6 +69,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - DEBUG=${DEBUG:-true}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
     volumes:
       - ./backend:/app
       - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/credentials.json:ro

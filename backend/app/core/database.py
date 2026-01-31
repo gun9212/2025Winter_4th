@@ -65,10 +65,16 @@ async_session_factory = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Initialize database and enable pgvector extension."""
+    """Initialize database, enable pgvector extension, and create tables."""
+    from app.models.base import Base
+    # Import models to register them with Base.metadata
+    from app.models import document, embedding  # noqa: F401
+
     async with engine.begin() as conn:
         # Enable pgvector extension
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Create all tables (development only - use Alembic in production)
+        await conn.run_sync(Base.metadata.create_all)
         await conn.commit()
 
 

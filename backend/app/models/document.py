@@ -132,7 +132,7 @@ class Document(Base, TimestampMixin):
     preprocessed_content: Mapped[str | None] = mapped_column(Text)  # Step 4: LLM-processed
 
     # Metadata (JSON for flexibility)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    doc_metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Processing info
     error_message: Mapped[str | None] = mapped_column(Text)
