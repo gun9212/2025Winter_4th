@@ -122,6 +122,8 @@ def run_full_pipeline(
                 await db.flush()
                 
                 # Step 6: Metadata Enrichment
+                # Note: event_hints removed per Ground Truth - Event mapping
+                # is determined at chunk level during enrichment, not at invocation
                 enricher = MetadataEnrichmentService(db)
                 await enricher.enrich_document(
                     document=document,
@@ -130,7 +132,6 @@ def run_full_pipeline(
                         "event_name": classification.event_name,
                         "year": classification.year,
                     },
-                    event_hints=event_hints,
                 )
                 
                 db_chunks = await enricher.enrich_chunks(document, chunks)
