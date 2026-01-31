@@ -12,6 +12,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.document import Document
+    from app.models.embedding import DocumentChunk
     from app.models.reference import Reference
 
 
@@ -99,6 +100,14 @@ class Event(Base, TimestampMixin):
         "Reference", 
         back_populates="event",
         cascade="all, delete-orphan",
+    )
+    
+    # ⭐ NEW: Chunk-level relationship (N:M support)
+    # Chunks can be associated with events independently of their parent document
+    related_chunks: Mapped[list["DocumentChunk"]] = relationship(
+        "DocumentChunk",
+        back_populates="related_event",
+        foreign_keys="DocumentChunk.related_event_id",
     )
 
     def add_chunk_to_timeline(

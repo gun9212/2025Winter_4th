@@ -75,3 +75,83 @@ class EventListResponse(BaseModel):
 
     total: int = Field(..., description="Total number of events")
     events: list[EventResponse] = Field(..., description="List of events")
+
+
+# ================================
+# Calendar Sync from Result Document
+# ================================
+
+
+class CalendarSyncOptions(BaseModel):
+    """Options for calendar sync from result document."""
+
+    create_reminders: bool = Field(
+        default=True,
+        description="Create reminders for extracted events",
+    )
+    notify_assignees: bool = Field(
+        default=False,
+        description="Send notifications to assignees",
+    )
+    default_duration_hours: int = Field(
+        default=1,
+        ge=1,
+        le=24,
+        description="Default event duration if not specified",
+    )
+    reminder_minutes: list[int] = Field(
+        default=[60, 1440],  # 1 hour, 1 day before
+        description="Reminder times in minutes before event",
+    )
+
+
+class ExtractionHints(BaseModel):
+    """Hints for extracting calendar events from documents."""
+
+    date_patterns: list[str] = Field(
+        default=["~까지", "마감일:", "D-day", "마감:"],
+        description="Patterns to identify dates",
+    )
+    assignee_patterns: list[str] = Field(
+        default=["담당:", "담당자:", "책임:"],
+        description="Patterns to identify assignees",
+    )
+
+
+class CalendarSyncRequest(BaseModel):
+    """Request schema for syncing calendar from result document."""
+
+    result_doc_id: str = Field(
+        ...,
+        description="Google Docs ID of the result/minutes document",
+        examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
+    )
+    calendar_id: str = Field(
+        ...,
+        description="Google Calendar ID to sync events to",
+        examples=["primary", "shared-calendar@group.calendar.google.com"],
+    )
+    options: CalendarSyncOptions = Field(
+        default_factory=CalendarSyncOptions,
+        description="Sync options",
+    )
+    extraction_hints: ExtractionHints = Field(
+        default_factory=ExtractionHints,
+        description="Hints for event extraction",
+    )
+    user_level: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="User access level",
+    )
+
+
+class CalendarSyncResponse(BaseModel):
+    """Response schema for calendar sync request."""
+
+    task_id: str = Field(..., description="Celery task ID for tracking")
+    status: str = Field(default="PENDING", description="Initial task status")
+    message: str = Field(..., description="Status message")
+    calendar_id: str = Field(..., description="Target calendar ID")
+
