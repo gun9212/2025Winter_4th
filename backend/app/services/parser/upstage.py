@@ -1,4 +1,4 @@
-"""Upstage Document Parser service for converting documents to Markdown/HTML."""
+"""Upstage Document Parser service for converting documents to Markdown."""
 
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,7 @@ class UpstageParserError(Exception):
 
 
 class UpstageDocParser:
-    """Service for parsing documents using Upstage Document Parse API (RAG Optimized)."""
+    """Service for parsing documents using Upstage Document Parse API."""
 
     # Document Parse API endpoint
     API_URL = "https://api.upstage.ai/v1/document-ai/document-parse"
@@ -36,87 +36,75 @@ class UpstageDocParser:
         raw_data_path: str = "/app/data/raw",
         processed_data_path: str = "/app/data/processed",
     ) -> None:
-        """
-        Initialize Upstage parser.
-
-        Args:
-            raw_data_path: Path to raw data directory.
-            processed_data_path: Path to processed data directory.
-        """
+        """Initialize Upstage parser."""
         self.api_key = settings.UPSTAGE_API_KEY
         self.raw_data_path = Path(raw_data_path)
         self.processed_data_path = Path(processed_data_path)
 
-        # Ensure processed directory exists
         self.processed_data_path.mkdir(parents=True, exist_ok=True)
 
         if not self.api_key:
             logger.warning("UPSTAGE_API_KEY is not set")
 
-    async def _call_api(
-        self,
-        file_path: Path,
-        output_format: str,
-    ) -> str:
+    def _extract_text_content(self, content: Any) -> str:
         """
-        Call Upstage Document Parse API with specified output format.
+        Extract text string from API response content.
+
+        Handles cases where content might be dict, list, or string.
 
         Args:
-            file_path: Path to the document file.
-            output_format: "markdown" or "html".
+            content: Raw content from API response.
 
         Returns:
-            Parsed content string.
+            Extracted text as string.
+
+        Raises:
+            UpstageParserError: If content cannot be extracted.
         """
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        # Case 1: Already a string
+        if isinstance(content, str):
+            return content
 
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            with open(file_path, "rb") as f:
-                response = await client.post(
-                    self.API_URL,
-                    headers=headers,
-                    files={"document": f},
-                    data={"output_format": output_format},
-                )
-
-        if response.status_code != 200:
-            logger.error(
-                "[PARSER] API request failed",
-                status_code=response.status_code,
-                output_format=output_format,
-                response_text=response.text[:500],
+        # Case 2: Dictionary - try common keys
+        if isinstance(content, dict):
+            logger.info(
+                "[PARSER] Content is dict, extracting text",
+                keys=list(content.keys()),
             )
-            raise UpstageParserError(
-                f"API Error {response.status_code}: {response.text}"
+            extracted = (
+                content.get("text")
+                or content.get("markdown")
+                or content.get("html")
+                or content.get("content")
             )
+            if extracted:
+                # Recursive call in case nested
+                return self._extract_text_content(extracted)
+            # Fallback: convert dict to string
+            import json
+            return json.dumps(content, ensure_ascii=False, indent=2)
 
-        result = response.json()
-        content = result.get("content")
+        # Case 3: List - join elements
+        if isinstance(content, list):
+            logger.info("[PARSER] Content is list, joining elements")
+            texts = [self._extract_text_content(item) for item in content]
+            return "\n".join(texts)
 
-        if not content:
-            logger.error(
-                "[PARSER] Empty content from API",
-                output_format=output_format,
-                response_keys=list(result.keys()),
-            )
-            raise UpstageParserError(
-                f"API 응답에서 {output_format} content를 추출할 수 없습니다."
-            )
-
-        return content
+        # Case 4: Other types - convert to string
+        return str(content)
 
     async def parse_and_save(
         self,
         file_path: str | Path,
     ) -> dict[str, Any]:
         """
-        Parse a document and save both Markdown and HTML results.
+        Parse a document and save the Markdown result.
 
         Args:
             file_path: Path to the document file.
 
         Returns:
-            Dictionary with parsing results including both contents and output paths.
+            Dictionary with parsing results.
 
         Raises:
             UpstageParserError: If parsing fails.
@@ -126,7 +114,7 @@ class UpstageDocParser:
         if not file_path.exists():
             raise UpstageParserError(f"File not found: {file_path}")
 
-        # 출력 경로 계산 (raw 폴더 구조 유지)
+        # Calculate output path
         try:
             relative_path = file_path.relative_to(self.raw_data_path)
         except ValueError:
@@ -135,51 +123,85 @@ class UpstageDocParser:
         output_dir = self.processed_data_path / relative_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 파일명 (확장자 제외)
-        base_name = relative_path.stem
-        md_output_path = output_dir / f"{base_name}.md"
-        html_output_path = output_dir / f"{base_name}.html"
+        output_path = output_dir / f"{relative_path.stem}.md"
 
         logger.info(
-            "[PARSER] Starting document parse (markdown + html)",
+            "[PARSER] Starting document parse",
             input_file=str(file_path),
-            md_output=str(md_output_path),
-            html_output=str(html_output_path),
+            output_file=str(output_path),
         )
 
         try:
-            # 1. Markdown 요청
-            logger.info("[PARSER] Fetching markdown format...")
-            markdown_content = await self._call_api(file_path, "markdown")
+            # 1. API 호출
+            headers = {"Authorization": f"Bearer {self.api_key}"}
 
-            # 2. HTML 요청
-            logger.info("[PARSER] Fetching html format...")
-            html_content = await self._call_api(file_path, "html")
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                with open(file_path, "rb") as f:
+                    response = await client.post(
+                        self.API_URL,
+                        headers=headers,
+                        files={"document": f},
+                        data={"output_format": "markdown"},
+                    )
 
-            # 3. Markdown 저장
-            async with aiofiles.open(md_output_path, "w", encoding="utf-8") as f:
-                await f.write(markdown_content)
+            # 2. 응답 검증
+            if response.status_code != 200:
+                logger.error(
+                    "[PARSER] API request failed",
+                    status_code=response.status_code,
+                    response_text=response.text[:500],
+                )
+                raise UpstageParserError(
+                    f"API Error {response.status_code}: {response.text}"
+                )
 
-            # 4. HTML 저장
-            async with aiofiles.open(html_output_path, "w", encoding="utf-8") as f:
-                await f.write(html_content)
+            result = response.json()
 
             logger.info(
-                "[PARSER] Document parsed successfully (both formats)",
+                "[PARSER] API response received",
+                response_type=type(result).__name__,
+                response_keys=list(result.keys()) if isinstance(result, dict) else None,
+            )
+
+            # 3. Content 추출 (타입 방어 로직 포함)
+            raw_content = result.get("content") if isinstance(result, dict) else result
+
+            if not raw_content:
+                logger.error(
+                    "[PARSER] Empty content from API",
+                    result_keys=list(result.keys()) if isinstance(result, dict) else None,
+                )
+                raise UpstageParserError("API 응답에서 content를 추출할 수 없습니다.")
+
+            # 4. 문자열로 변환 (핵심 버그 수정)
+            content = self._extract_text_content(raw_content)
+
+            if not content or not content.strip():
+                raise UpstageParserError("추출된 content가 비어있습니다.")
+
+            logger.info(
+                "[PARSER] Content extracted",
+                content_type=type(content).__name__,
+                content_length=len(content),
+            )
+
+            # 5. 파일 저장
+            async with aiofiles.open(output_path, "w", encoding="utf-8") as f:
+                await f.write(content)
+
+            logger.info(
+                "[PARSER] Document parsed successfully",
                 input_file=str(file_path),
-                md_length=len(markdown_content),
-                html_length=len(html_content),
+                output_file=str(output_path),
+                content_length=len(content),
             )
 
             return {
                 "success": True,
                 "input_path": str(file_path),
-                "output_path": str(md_output_path),  # 기본은 markdown 경로
-                "html_output_path": str(html_output_path),
-                "content": markdown_content,  # DB에는 markdown 저장
-                "html_content": html_content,
-                "content_length": len(markdown_content),
-                "html_length": len(html_content),
+                "output_path": str(output_path),
+                "content": content,
+                "content_length": len(content),
                 "images": [],
             }
 
@@ -189,6 +211,7 @@ class UpstageDocParser:
             logger.error(
                 "[PARSER] Parsing failed",
                 error=str(e),
+                error_type=type(e).__name__,
                 file=str(file_path),
             )
             raise UpstageParserError(str(e))
