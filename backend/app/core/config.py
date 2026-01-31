@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     VERTEX_AI_EMBEDDING_MODEL: str = "text-embedding-004"
     VERTEX_AI_EMBEDDING_DIMENSION: int = 768  # text-embedding-004 dimension
 
+    # Google AI Studio API Key (for text-embedding-004)
+    # Used by LangChain GoogleGenerativeAIEmbeddings
+    VERTEX_API_KEY: str = ""
+
     # AI Services
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"  # Updated to Gemini 2.0 Flash

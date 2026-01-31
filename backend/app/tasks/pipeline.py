@@ -180,10 +180,15 @@ def ingest_folder(
 ) -> dict[str, Any]:
     """
     Ingest all documents from a Google Drive folder.
-    
+
     Per Ground Truth: event_id is NOT provided at ingestion time.
     Event mapping happens at chunk level during enrichment step.
-    
+
+    This task uses the integrated Step 1 pipeline which:
+    1. Syncs files from Google Drive using rclone
+    2. Collects Google Forms URLs via Drive API
+    3. Registers all files to the database
+
     Args:
         drive_folder_id: Google Drive folder ID
         options: Ingestion options dict with:
@@ -191,66 +196,64 @@ def ingest_folder(
             - recursive: Process subfolders (default: True)
             - file_types: Filter by file type (default: all)
             - exclude_patterns: Glob patterns to skip
-        
+            - skip_sync: Skip rclone sync step (default: False)
+
     Returns:
         Task result with ingestion statistics
     """
     options = options or {}
     is_privacy_sensitive = options.get("is_privacy_sensitive", False)
-    
+    skip_sync = options.get("skip_sync", False)
+
     async def _ingest():
         from app.pipeline.step_01_ingest import IngestionService
-        
+
         ingester = IngestionService()
-        
-        # Sync files from Drive
-        sync_result = await ingester.sync_from_drive(drive_folder_id)
-        
-        if sync_result.files_failed > 0:
-            logger.warning(
-                "Some files failed to sync",
-                failed=sync_result.files_failed,
-                errors=sync_result.errors[:5],
+
+        async with async_session_factory() as db:
+            # Use the integrated run_step1 method for full Step 1 pipeline
+            step1_result = await ingester.run_step1(
+                db=db,
+                folder_id=drive_folder_id,
+                skip_sync=skip_sync,
             )
-        
-        # List synced files
-        files = await ingester.list_synced_files()
-        
-        # Collect form links for Reference table
-        form_links = await ingester.collect_google_form_links(drive_folder_id)
-        
-        return {
-            "files_synced": sync_result.files_synced,
-            "files": files,
-            "form_links": form_links,
-        }
+
+            # Get list of synced files for triggering subsequent pipelines
+            files = await ingester.list_synced_files()
+
+            return {
+                "step1_result": step1_result,
+                "files": files,
+            }
 
     try:
         result = run_async(_ingest())
-        
-        # Trigger pipeline for each file
-        processed = 0
-        
+        step1 = result["step1_result"]
+
+        # Extract counts from step1 result
+        files_synced = step1.get("sync", {}).get("files_synced", 0) if isinstance(step1.get("sync"), dict) else 0
+        forms_new = step1.get("forms", {}).get("new", 0) if isinstance(step1.get("forms"), dict) else 0
+        files_new = step1.get("files", {}).get("new", 0) if isinstance(step1.get("files"), dict) else 0
+
         if is_privacy_sensitive:
             # Store as reference only, skip embedding
             logger.info(
                 "Privacy sensitive folder - storing as references only",
                 folder_id=drive_folder_id,
-                files_count=len(result["files"]),
+                files_registered=files_new,
             )
-            # TODO: Create Reference records instead of processing
-            # for file_info in result["files"]:
-            #     create_reference(file_info)
-            
+
             return {
                 "status": "success",
                 "folder_id": drive_folder_id,
-                "files_synced": result["files_synced"],
-                "references_created": len(result["files"]),
+                "files_synced": files_synced,
+                "files_registered": files_new,
+                "forms_registered": forms_new,
                 "is_privacy_sensitive": True,
             }
-        
+
         # Normal processing - trigger pipeline for each file
+        processed = 0
         for file_info in result["files"]:
             # Note: event_hints removed per Ground Truth
             # Event is determined at chunk level during enrichment
@@ -261,16 +264,18 @@ def ingest_folder(
                 folder_path=file_info.get("full_folder_path", ""),
             )
             processed += 1
-        
+
         return {
             "status": "success",
             "folder_id": drive_folder_id,
-            "files_synced": result["files_synced"],
+            "files_synced": files_synced,
+            "files_registered": files_new,
+            "forms_registered": forms_new,
             "pipelines_triggered": processed,
-            "form_links_collected": len(result["form_links"]),
         }
-        
+
     except Exception as e:
+        logger.exception("Folder ingestion failed", error=str(e))
         return {
             "status": "error",
             "folder_id": drive_folder_id,

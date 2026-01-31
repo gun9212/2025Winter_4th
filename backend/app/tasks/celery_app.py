@@ -8,7 +8,11 @@ celery_app = Celery(
     "council_ai",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.document", "app.tasks.pipeline"],
+    include=[
+        "app.tasks.document",
+        "app.tasks.pipeline",
+        "app.tasks.embedding",
+    ],
 )
 
 # Celery configuration
@@ -31,6 +35,7 @@ celery_app.conf.update(
     task_routes={
         "app.tasks.document.*": {"queue": "document"},
         "app.tasks.pipeline.*": {"queue": "pipeline"},
+        "app.tasks.embedding.*": {"queue": "embedding"},
     },
     # Task annotations
     task_annotations={

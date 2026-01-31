@@ -472,13 +472,13 @@ class IngestionService:
     ) -> dict[str, Any]:
         """
         Sync files from data/raw folder to DB.
-        
+
         Merged from teammate's ingestion.py.
-        
+
         Args:
             db: Database session.
             force: If True, scan and register even if DB is not empty.
-        
+
         Returns:
             Dictionary with sync results.
         """
@@ -525,3 +525,184 @@ class IngestionService:
             "reason": "Files registered",
             **result,
         }
+
+    async def register_google_forms_to_db(
+        self,
+        db: AsyncSession,
+        forms: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """
+        Register Google Forms to the database using their webViewLink.
+
+        Google Forms cannot be downloaded, so we store them as References
+        with COMPLETED status immediately.
+
+        Args:
+            db: Database session.
+            forms: List of Google Form metadata from Google Drive API.
+                   Each dict should have: id, name, webViewLink, modifiedTime
+
+        Returns:
+            Dictionary with counts of new and skipped forms.
+        """
+        existing_result = await db.execute(select(Document.drive_id))
+        existing_ids = set(row[0] for row in existing_result.fetchall() if row[0])
+
+        new_count = 0
+        skipped_count = 0
+
+        for form_info in forms:
+            drive_id = form_info.get("id")
+
+            if drive_id in existing_ids:
+                logger.debug(
+                    "[FORMS] Skipping duplicate form",
+                    drive_id=drive_id,
+                )
+                skipped_count += 1
+                continue
+
+            doc = Document(
+                drive_id=drive_id,
+                drive_name=self.normalize_filename(form_info.get("name", "Untitled Form")),
+                drive_path=None,
+                mime_type="application/vnd.google-apps.form",
+                doc_type=DocumentType.GOOGLE_FORM,
+                status=DocumentStatus.COMPLETED,
+                doc_metadata={
+                    "url": form_info.get("webViewLink"),
+                    "is_external": True,
+                    "modified_time": form_info.get("modifiedTime"),
+                    "source": "google_drive_api",
+                },
+            )
+            db.add(doc)
+            new_count += 1
+
+            logger.debug(
+                "[FORMS] Added new Google Form",
+                drive_id=drive_id,
+                name=form_info.get("name"),
+            )
+
+        await db.commit()
+
+        logger.info(
+            "[FORMS] Google Forms registered to database",
+            new=new_count,
+            skipped=skipped_count,
+            total=len(forms),
+        )
+
+        return {"new": new_count, "skipped": skipped_count, "total": len(forms)}
+
+    async def run_step1(
+        self,
+        db: AsyncSession,
+        folder_id: str | None = None,
+        skip_sync: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Execute full Step 1 pipeline: rclone sync + Forms collection + DB registration.
+
+        This is the main entry point for Step 1 of the RAG pipeline.
+
+        Args:
+            db: Database session for registering documents.
+            folder_id: Google Drive folder ID to sync.
+                       Uses settings.GOOGLE_DRIVE_FOLDER_ID if not provided.
+            skip_sync: If True, skip rclone sync (useful for testing or when files
+                       are already downloaded).
+
+        Returns:
+            Dictionary with complete Step 1 results:
+            {
+                "folder_id": str,
+                "sync": {...},      # rclone sync result
+                "forms": {...},     # Google Forms collection result
+                "files": {...},     # File registration result
+                "success": bool,
+            }
+        """
+        folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID or ""
+
+        result: dict[str, Any] = {
+            "folder_id": folder_id,
+            "sync": None,
+            "forms": None,
+            "files": None,
+            "success": False,
+        }
+
+        try:
+            # Step 1a: Sync files from Google Drive using rclone
+            if not skip_sync and folder_id:
+                logger.info(
+                    "[STEP1] Starting rclone sync",
+                    folder_id=folder_id,
+                )
+                sync_result = await self.sync_from_drive(folder_id)
+                result["sync"] = {
+                    "files_synced": sync_result.files_synced,
+                    "files_failed": sync_result.files_failed,
+                    "total_size_bytes": sync_result.total_size_bytes,
+                    "errors": sync_result.errors[:5] if sync_result.errors else [],
+                }
+
+                if sync_result.files_failed > 0:
+                    logger.warning(
+                        "[STEP1] Some files failed to sync",
+                        failed=sync_result.files_failed,
+                        errors=sync_result.errors[:5],
+                    )
+            else:
+                logger.info("[STEP1] Skipping rclone sync")
+                result["sync"] = {"skipped": True}
+
+            # Step 1b: Collect Google Forms URLs via Drive API
+            if folder_id:
+                logger.info(
+                    "[STEP1] Collecting Google Forms",
+                    folder_id=folder_id,
+                )
+                try:
+                    forms = await self.collect_google_form_links(folder_id)
+                    forms_result = await self.register_google_forms_to_db(db, forms)
+                    result["forms"] = {
+                        "found": len(forms),
+                        "new": forms_result["new"],
+                        "skipped": forms_result["skipped"],
+                    }
+                except Exception as e:
+                    logger.warning(
+                        "[STEP1] Failed to collect Google Forms",
+                        error=str(e),
+                    )
+                    result["forms"] = {"error": str(e)}
+            else:
+                result["forms"] = {"skipped": True, "reason": "No folder_id provided"}
+
+            # Step 1c: Scan and register local files to DB
+            logger.info("[STEP1] Scanning and registering local files")
+            files = self.scan_local_files()
+            files_result = await self.register_files_to_db(db, files)
+            result["files"] = {
+                "scanned": len(files),
+                "new": files_result["new"],
+                "skipped": files_result["skipped"],
+            }
+
+            result["success"] = True
+            logger.info(
+                "[STEP1] Step 1 completed successfully",
+                files_synced=result["sync"].get("files_synced", 0) if isinstance(result["sync"], dict) else 0,
+                forms_new=result["forms"].get("new", 0) if isinstance(result["forms"], dict) else 0,
+                files_new=result["files"]["new"],
+            )
+
+        except Exception as e:
+            logger.exception("[STEP1] Step 1 failed", error=str(e))
+            result["error"] = str(e)
+            raise
+
+        return result
