@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"  # Updated to Gemini 2.0 Flash
     UPSTAGE_API_KEY: str = ""
 
+    # Google Drive Ingestion (from teammate's ingestion.py)
+    GOOGLE_DRIVE_FOLDER_ID: str = ""  # Default folder ID for ingestion
+    
+    # Data Paths (for local ingestion pipeline)
+    DATA_RAW_PATH: str = "/app/data/raw"  # rclone sync destination
+    DATA_PROCESSED_PATH: str = "/app/data/processed"  # Parsed output
+    LOGS_PATH: str = "/app/logs"  # Log files
+
     # Celery
     CELERY_BROKER_URL: str = ""
     CELERY_RESULT_BACKEND: str = ""

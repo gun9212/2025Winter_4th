@@ -74,6 +74,52 @@ class ParsingService:
             self.gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
         return self.gemini_model
 
+    def _extract_text_content(self, content: Any) -> str:
+        """
+        Extract text string from API response content.
+        
+        Merged from teammate's upstage.py - handles cases where content 
+        might be dict, list, or string (defensive parsing).
+        
+        Args:
+            content: Raw content from API response.
+        
+        Returns:
+            Extracted text as string.
+        """
+        import json
+        
+        # Case 1: Already a string
+        if isinstance(content, str):
+            return content
+
+        # Case 2: Dictionary - try common keys
+        if isinstance(content, dict):
+            logger.debug(
+                "[PARSER] Content is dict, extracting text",
+                keys=list(content.keys()),
+            )
+            extracted = (
+                content.get("text")
+                or content.get("markdown")
+                or content.get("html")
+                or content.get("content")
+            )
+            if extracted:
+                # Recursive call in case nested
+                return self._extract_text_content(extracted)
+            # Fallback: convert dict to string
+            return json.dumps(content, ensure_ascii=False, indent=2)
+
+        # Case 3: List - join elements
+        if isinstance(content, list):
+            logger.debug("[PARSER] Content is list, joining elements")
+            texts = [self._extract_text_content(item) for item in content]
+            return "\n".join(texts)
+
+        # Case 4: Other types - convert to string
+        return str(content)
+
     async def parse_document(
         self,
         file_content: bytes,

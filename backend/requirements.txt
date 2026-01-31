@@ -27,6 +27,7 @@ langchain==0.1.6
 langchain-google-genai==0.0.6
 langchain-text-splitters==0.0.2
 httpx==0.26.0
+aiofiles==23.2.1
 
 # Image Processing
 Pillow==10.2.0
