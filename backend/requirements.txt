@@ -9,6 +9,7 @@ sqlalchemy[asyncio]>=2.0.25
 pgvector>=0.2.5
 alembic>=1.13.0
 cloud-sql-python-connector[asyncpg]>=1.6.0
+psycopg2-binary>=2.9.10
 
 # Task Queue
 celery[redis]>=5.3.6
@@ -29,8 +30,8 @@ langchain-google-genai>=1.0.0
 httpx>=0.26.0
 
 # Image Processing
-Pillow==10.2.0
-pdf2image==1.17.0
+Pillow>=11.0.0
+pdf2image>=1.17.0
 
 # Data Processing
 pydantic>=2.6.0
@@ -46,3 +47,4 @@ pytest-cov>=4.1.0
 python-dotenv>=1.0.0
 tenacity>=8.2.0
 structlog>=24.1.0
+

@@ -47,7 +47,7 @@ class Reference(Base, TimestampMixin):
     access_level: Mapped[int] = mapped_column(default=3)
 
     # Additional metadata
-    metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    file_metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Relationships
     event: Mapped["Event"] = relationship("Event", back_populates="references")

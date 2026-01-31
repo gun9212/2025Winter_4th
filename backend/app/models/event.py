@@ -86,7 +86,7 @@ class Event(Base, TimestampMixin):
     child_chunk_ids: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), default=list)
     
     # Additional metadata
-    metadata: Mapped[dict | None] = mapped_column(JSONB, default=dict)
+    meta_data: Mapped[dict | None] = mapped_column(JSONB, default=dict)
 
     # Relationships
     documents: Mapped[list["Document"]] = relationship(
