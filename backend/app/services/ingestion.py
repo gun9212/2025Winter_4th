@@ -7,6 +7,7 @@ Combines:
 - Upstage Parser for document parsing and content extraction
 """
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -706,6 +707,10 @@ class IngestionService:
                     "name": doc.drive_name,
                     "error": str(e),
                 })
+
+            # Rate limit throttling: wait 2 seconds between API calls
+            logger.info("[PARSE] Throttling: waiting 2 seconds before next document...")
+            await asyncio.sleep(2)
 
         logger.info(
             "Document parsing batch completed",
