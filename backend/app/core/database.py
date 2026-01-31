@@ -10,17 +10,49 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
+
+def _get_engine():
+    """Create the appropriate database engine based on configuration."""
+    if settings.USE_CLOUD_SQL and settings.CLOUD_SQL_CONNECTION_NAME:
+        # Cloud SQL Connector for production
+        # TODO: Enable this when CLOUD_SQL_CONNECTION_NAME is configured
+        from google.cloud.sql.connector import Connector
+        
+        connector = Connector()
+        
+        async def getconn():
+            conn = await connector.connect_async(
+                settings.CLOUD_SQL_CONNECTION_NAME,
+                "asyncpg",
+                user=settings.POSTGRES_USER,
+                password=settings.POSTGRES_PASSWORD,
+                db=settings.POSTGRES_DB,
+            )
+            return conn
+        
+        return create_async_engine(
+            "postgresql+asyncpg://",
+            async_creator=getconn,
+            echo=settings.DEBUG,
+            poolclass=NullPool,  # Cloud SQL Connector manages its own pool
+        )
+    else:
+        # Standard asyncpg connection for local development
+        return create_async_engine(
+            settings.DATABASE_URL,
+            echo=settings.DEBUG,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+        )
+
+
 # Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-)
+engine = _get_engine()
 
 # Session factory
 async_session_factory = async_sessionmaker(
@@ -51,3 +83,4 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 # Type alias for dependency injection
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+

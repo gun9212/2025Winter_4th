@@ -34,6 +34,17 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://council:council_secret@localhost:5432/council_ai"
+    
+    # Cloud SQL Configuration
+    # TODO: Add CLOUD_SQL_CONNECTION_NAME to .env when ready for production
+    # Format: project:region:instance (e.g., council-ai-prod:asia-northeast3:council-db)
+    CLOUD_SQL_CONNECTION_NAME: str = ""
+    USE_CLOUD_SQL: bool = False  # Set to True to use Cloud SQL Connector
+    
+    # Database credentials (for Cloud SQL)
+    POSTGRES_USER: str = "council"
+    POSTGRES_PASSWORD: str = "council_secret"
+    POSTGRES_DB: str = "council_ai"
 
     @property
     def SYNC_DATABASE_URL(self) -> str:
@@ -46,9 +57,16 @@ class Settings(BaseSettings):
     # Google Cloud Platform
     GOOGLE_CLOUD_PROJECT: str = ""
     GCS_BUCKET_NAME: str = "council-data"
+    
+    # Vertex AI Configuration
+    # TODO: Add VERTEX_AI_LOCATION to .env (e.g., asia-northeast3, us-central1)
+    VERTEX_AI_LOCATION: str = "asia-northeast3"
+    VERTEX_AI_EMBEDDING_MODEL: str = "text-embedding-004"
+    VERTEX_AI_EMBEDDING_DIMENSION: int = 768  # text-embedding-004 dimension
 
     # AI Services
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"  # Updated to Gemini 2.0 Flash
     UPSTAGE_API_KEY: str = ""
 
     # Celery
@@ -79,3 +97,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
