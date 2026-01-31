@@ -10,7 +10,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.rag import (
+from app.schemas.rag_dto import (
     DocumentListResponse,
     IngestRequest,
     IngestResponse,

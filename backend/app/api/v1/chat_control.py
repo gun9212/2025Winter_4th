@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.chat import (
+from app.schemas.chat_dto import (
     ChatRequest,
     ChatResponse,
     ChatMetadata,

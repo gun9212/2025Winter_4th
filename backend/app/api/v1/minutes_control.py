@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.minutes import (
+from app.schemas.minutes_dto import (
     MinutesProcessRequest,
     MinutesProcessResponse,
     MinutesStatusResponse,

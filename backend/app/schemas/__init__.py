@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response validation."""
 
-from app.schemas.calendar import (
+from app.schemas.calendar_dto import (
     CalendarSyncOptions,
     CalendarSyncRequest,
     CalendarSyncResponse,
@@ -9,7 +9,7 @@ from app.schemas.calendar import (
     EventResponse,
     ExtractionHints,
 )
-from app.schemas.chat import (
+from app.schemas.chat_dto import (
     ChatHistoryItem,
     ChatMetadata,
     ChatOptions,
@@ -17,14 +17,14 @@ from app.schemas.chat import (
     ChatResponse,
     SourceReference,
 )
-from app.schemas.handover import (
+from app.schemas.handover_dto import (
     HandoverContentOptions,
     HandoverGenerateRequest,
     HandoverGenerateResponse,
     HandoverOutputConfig,
     HandoverSourceFilters,
 )
-from app.schemas.minutes import (
+from app.schemas.minutes_dto import (
     ActionItem,
     DecisionItem,
     MeetingInfo,
@@ -34,7 +34,7 @@ from app.schemas.minutes import (
     OutputConfig,
     ProcessingStatus,
 )
-from app.schemas.rag import (
+from app.schemas.rag_dto import (
     DocumentInfo,
     DocumentListResponse,
     FileType,
@@ -45,7 +45,7 @@ from app.schemas.rag import (
     SearchResponse,
     SearchResult,
 )
-from app.schemas.task import (
+from app.schemas.task_dto import (
     TaskQueueResponse,
     TaskResult,
     TaskStatus,

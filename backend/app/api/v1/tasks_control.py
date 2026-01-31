@@ -16,7 +16,7 @@ from celery.states import PENDING, STARTED, SUCCESS, FAILURE, REVOKED, RETRY
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey
-from app.schemas.task import (
+from app.schemas.task_dto import (
     TaskStatus,
     TaskStatusResponse,
     TaskResult,

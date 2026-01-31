@@ -2,12 +2,12 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.calendar import router as calendar_router
-from app.api.v1.chat import router as chat_router
-from app.api.v1.handover import router as handover_router
-from app.api.v1.minutes import router as minutes_router
-from app.api.v1.rag import router as rag_router
-from app.api.v1.tasks import router as tasks_router
+from app.api.v1.calendar_control import router as calendar_router
+from app.api.v1.chat_control import router as chat_router
+from app.api.v1.handover_control import router as handover_router
+from app.api.v1.minutes_control import router as minutes_router
+from app.api.v1.rag_control import router as rag_router
+from app.api.v1.tasks_control import router as tasks_router
 
 api_router = APIRouter()
 

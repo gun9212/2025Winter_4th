@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.calendar import (
+from app.schemas.calendar_dto import (
     CalendarSyncRequest,
     CalendarSyncResponse,
     EventCreateRequest,

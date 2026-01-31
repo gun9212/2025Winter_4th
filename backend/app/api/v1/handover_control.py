@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import ApiKey, DbSession
-from app.schemas.handover import (
+from app.schemas.handover_dto import (
     HandoverGenerateRequest,
     HandoverGenerateResponse,
 )
