@@ -243,44 +243,52 @@ class IngestionService:
         files = []
 
         logger.info(
-            "Starting file scan",
+            "=== [SCAN] Starting recursive file scan ===",
             data_path=str(self.data_path),
             exists=self.data_path.exists(),
         )
 
         if not self.data_path.exists():
-            logger.warning("Data path does not exist", path=str(self.data_path))
+            logger.warning("[SCAN] Data path does not exist", path=str(self.data_path))
             return files
 
         # List all subdirectories first for debugging
         subdirs = [d for d in self.data_path.rglob("*") if d.is_dir()]
         logger.info(
-            "Found subdirectories",
+            "[SCAN] Found subdirectories",
             count=len(subdirs),
-            dirs=[str(d.relative_to(self.data_path)) for d in subdirs[:10]],
+            dirs=[str(d.relative_to(self.data_path)) for d in subdirs],
         )
 
         # Scan all files recursively using rglob
         all_items = list(self.data_path.rglob("*"))
-        logger.info("Total items found (files + dirs)", count=len(all_items))
+        file_items = [f for f in all_items if f.is_file()]
+        logger.info(
+            "[SCAN] Total items breakdown",
+            total_items=len(all_items),
+            files_only=len(file_items),
+            directories=len(all_items) - len(file_items),
+        )
 
-        for file_path in all_items:
-            # Skip directories
-            if not file_path.is_file():
-                continue
-
+        for file_path in file_items:
             extension = file_path.suffix.lower()
-
-            # Log each file found (for debugging)
             relative_path = str(file_path.relative_to(self.data_path))
-            logger.debug(
-                "Found file",
-                path=relative_path,
+
+            # Log every file found (including unsupported)
+            logger.info(
+                "[SCAN] Found file",
+                relative_path=relative_path,
+                full_path=str(file_path),
                 extension=extension,
                 supported=extension in SUPPORTED_EXTENSIONS,
             )
 
             if extension not in SUPPORTED_EXTENSIONS:
+                logger.info(
+                    "[SCAN] Skipping unsupported file",
+                    path=relative_path,
+                    extension=extension,
+                )
                 continue
 
             stat = file_path.stat()
@@ -297,28 +305,118 @@ class IngestionService:
             files.append(file_info)
 
             logger.info(
-                "Added file to scan results",
+                "[SCAN] Added file to results",
                 name=file_path.name,
-                path=relative_path,
+                relative_path=relative_path,
                 doc_type=file_info["doc_type"].value if hasattr(file_info["doc_type"], 'value') else str(file_info["doc_type"]),
+                size_bytes=stat.st_size,
             )
 
         logger.info(
-            "File scan completed",
+            "=== [SCAN] File scan completed ===",
             total_files=len(files),
-            by_extension={ext: sum(1 for f in files if f["extension"] == ext) for ext in set(f["extension"] for f in files)},
+            by_extension={ext: sum(1 for f in files if f["extension"] == ext) for ext in set(f["extension"] for f in files)} if files else {},
         )
 
         return files
+
+    async def sync_folder_to_db(
+        self,
+        db: AsyncSession,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Sync files from data/raw folder to DB.
+
+        This method ensures all files in the raw directory are registered
+        in the database with PENDING status. Call this before parsing
+        to ensure the DB is in sync with the filesystem.
+
+        Args:
+            db: Database session.
+            force: If True, scan and register even if DB is not empty.
+
+        Returns:
+            Dictionary with sync results.
+        """
+        logger.info("=== [DB SYNC] Starting folder-to-DB sync ===")
+
+        # Check if DB has any documents
+        doc_count_result = await db.execute(
+            select(Document.id).limit(1)
+        )
+        db_has_docs = doc_count_result.scalar() is not None
+
+        if db_has_docs and not force:
+            logger.info("[DB SYNC] DB already has documents, skipping sync (use force=True to override)")
+            return {
+                "synced": False,
+                "reason": "DB already has documents",
+                "new": 0,
+                "skipped": 0,
+                "total": 0,
+            }
+
+        # Scan files from filesystem
+        logger.info("[DB SYNC] Scanning filesystem for files...")
+        files = self.scan_local_files()
+
+        if not files:
+            logger.warning("[DB SYNC] No files found in data/raw directory")
+            return {
+                "synced": True,
+                "reason": "No files found",
+                "new": 0,
+                "skipped": 0,
+                "total": 0,
+            }
+
+        # Register files to DB
+        logger.info(f"[DB SYNC] Registering {len(files)} files to DB...")
+        result = await self.register_files_to_db(db, files)
+
+        logger.info(
+            "=== [DB SYNC] Folder-to-DB sync completed ===",
+            new=result["new"],
+            skipped=result["skipped"],
+            total=result["total"],
+        )
+
+        return {
+            "synced": True,
+            "reason": "Files registered",
+            **result,
+        }
 
     async def register_files_to_db(
         self,
         db: AsyncSession,
         files: list[dict[str, Any]],
     ) -> dict[str, int]:
+        """
+        Register scanned files to the database.
+
+        Args:
+            db: Database session.
+            files: List of file metadata from scan_local_files().
+
+        Returns:
+            Dictionary with new, skipped, and total counts.
+        """
+        logger.info(
+            "[REGISTER] Starting file registration",
+            files_to_process=len(files),
+        )
+
         # 1. 기존 DB에 등록된 '경로'들을 싹 가져와서 중복 검사 준비
         existing_result = await db.execute(select(Document.drive_path))
         existing_paths = set(row[0] for row in existing_result.fetchall() if row[0])
+
+        logger.info(
+            "[REGISTER] Existing paths in DB",
+            count=len(existing_paths),
+            paths=list(existing_paths)[:10],  # 처음 10개만 로깅
+        )
 
         new_count = 0
         skipped_count = 0
@@ -328,6 +426,10 @@ class IngestionService:
 
             # 중복 체크
             if file_path in existing_paths:
+                logger.info(
+                    "[REGISTER] Skipping duplicate",
+                    path=file_path,
+                )
                 skipped_count += 1
                 continue
 
@@ -342,7 +444,7 @@ class IngestionService:
                 doc_type=file_info["doc_type"],
                 status=DocumentStatus.PENDING,
                 doc_metadata={
-                    "full_path": file_info["full_path"], # 실제 VM 내 절대 경로
+                    "full_path": file_info["full_path"],  # 실제 VM 내 절대 경로
                     "size": file_info["size"],
                     "modified_time": file_info["modified_time"],
                     "source": "rclone_sync",
@@ -351,8 +453,23 @@ class IngestionService:
             db.add(doc)
             new_count += 1
 
+            logger.info(
+                "[REGISTER] Added new document",
+                drive_id=drive_id,
+                drive_path=file_path,
+                full_path=file_info["full_path"],
+                doc_type=file_info["doc_type"].value if hasattr(file_info["doc_type"], 'value') else str(file_info["doc_type"]),
+            )
+
         await db.commit()
-        logger.info("DB 등록 완료", new=new_count, skipped=skipped_count)
+
+        logger.info(
+            "[REGISTER] Registration completed",
+            new=new_count,
+            skipped=skipped_count,
+            total=len(files),
+        )
+
         return {"new": new_count, "skipped": skipped_count, "total": len(files)}
     async def register_google_forms_to_db(
         self,
@@ -413,23 +530,53 @@ class IngestionService:
         self,
         db: AsyncSession,
         limit: int = 50,
+        auto_sync: bool = True,
     ) -> dict[str, Any]:
         """
         Parse pending documents using Upstage Parser and update DB.
 
+        This method will automatically sync files from data/raw to DB
+        if there are no pending documents (auto_sync=True).
+
         Args:
             db: Database session.
             limit: Maximum number of documents to parse.
+            auto_sync: If True, sync files to DB first if no pending docs.
 
         Returns:
             Dictionary with parsing results.
         """
         from app.services.parser.upstage import UpstageDocParser, UpstageParserError
 
+        logger.info(
+            "=== [PARSE] Starting document parsing ===",
+            limit=limit,
+            auto_sync=auto_sync,
+        )
+
         parser = UpstageDocParser(
             raw_data_path=str(self.data_path),
             processed_data_path=str(self.processed_path),
         )
+
+        # Check if DB has pending documents
+        pending_check = await db.execute(
+            select(Document.id)
+            .where(Document.status == DocumentStatus.PENDING)
+            .where(Document.doc_type != DocumentType.GOOGLE_FORM)
+            .limit(1)
+        )
+        has_pending = pending_check.scalar() is not None
+
+        # If no pending documents and auto_sync is enabled, sync files first
+        if not has_pending and auto_sync:
+            logger.info("[PARSE] No pending documents found, syncing files from folder...")
+            sync_result = await self.sync_folder_to_db(db, force=True)
+            logger.info(
+                "[PARSE] Folder sync result",
+                new=sync_result.get("new", 0),
+                total=sync_result.get("total", 0),
+            )
 
         # Get pending documents
         result = await db.execute(
@@ -440,21 +587,62 @@ class IngestionService:
         )
         pending_docs = result.scalars().all()
 
+        logger.info(
+            "[PARSE] Found pending documents",
+            count=len(pending_docs),
+            docs=[{"id": d.id, "name": d.drive_name, "path": d.drive_path} for d in pending_docs],
+        )
+
         results = {
             "success": [],
             "failed": [],
             "total": len(pending_docs),
         }
 
+        if len(pending_docs) == 0:
+            logger.warning("[PARSE] No pending documents to parse")
+            return results
+
         for doc in pending_docs:
             file_path = doc.doc_metadata.get("full_path") if doc.doc_metadata else None
 
+            logger.info(
+                "[PARSE] Processing document",
+                doc_id=doc.id,
+                name=doc.drive_name,
+                drive_path=doc.drive_path,
+                full_path=file_path,
+            )
+
             if not file_path:
+                logger.error(
+                    "[PARSE] No file path in metadata",
+                    doc_id=doc.id,
+                    name=doc.drive_name,
+                    metadata=doc.doc_metadata,
+                )
                 results["failed"].append({
                     "id": doc.id,
                     "name": doc.drive_name,
                     "error": "No file path in metadata",
                 })
+                continue
+
+            # Verify file exists
+            if not Path(file_path).exists():
+                logger.error(
+                    "[PARSE] File does not exist on filesystem",
+                    doc_id=doc.id,
+                    full_path=file_path,
+                )
+                results["failed"].append({
+                    "id": doc.id,
+                    "name": doc.drive_name,
+                    "error": f"File not found: {file_path}",
+                })
+                doc.status = DocumentStatus.FAILED
+                doc.error_message = f"File not found: {file_path}"
+                await db.commit()
                 continue
 
             try:
