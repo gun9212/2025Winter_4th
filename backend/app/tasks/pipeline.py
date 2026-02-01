@@ -5,12 +5,18 @@ RAG data pipeline for processing student council documents.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from celery import shared_task
 import structlog
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.core.database import async_session_factory
+from app.core.config import settings
 from app.models.document import Document, DocumentStatus
 
 logger = structlog.get_logger()
@@ -24,6 +30,39 @@ def run_async(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+@asynccontextmanager
+async def get_celery_session():
+    """
+    Create a fresh database session for Celery tasks.
+    
+    Each Celery task gets its own engine and session to avoid
+    event loop conflicts with the main FastAPI application.
+    """
+    # Create a new engine for this task
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+    )
+    
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    
+    async with session_factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+    
+    await engine.dispose()
+
 
 
 @shared_task(bind=True, name="app.tasks.pipeline.run_full_pipeline")
@@ -59,7 +98,7 @@ def run_full_pipeline(
         from app.pipeline.step_07_embed import EmbeddingService
         from app.models.document import DocumentCategory
         
-        async with async_session_factory() as db:
+        async with get_celery_session() as db:
             try:
                 # Step 2: Classification
                 classifier = ClassificationService()
@@ -211,7 +250,7 @@ def ingest_folder(
 
         ingester = IngestionService()
 
-        async with async_session_factory() as db:
+        async with get_celery_session() as db:
             # Use the integrated run_step1 method for full Step 1 pipeline
             step1_result = await ingester.run_step1(
                 db=db,
@@ -303,7 +342,7 @@ def reprocess_document(
     async def _reprocess():
         from sqlalchemy import select
         
-        async with async_session_factory() as db:
+        async with get_celery_session() as db:
             result = await db.execute(
                 select(Document).where(Document.id == document_id)
             )
@@ -347,7 +386,7 @@ def create_hnsw_index(self) -> dict[str, Any]:
     async def _create_index():
         from app.pipeline.step_07_embed import EmbeddingService
         
-        async with async_session_factory() as db:
+        async with get_celery_session() as db:
             embedder = EmbeddingService(db)
             status = await embedder.ensure_hnsw_index()
             return {"status": "success", "index_status": status}

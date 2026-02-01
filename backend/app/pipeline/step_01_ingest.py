@@ -171,11 +171,13 @@ class IngestionService:
 
         # Build rclone command
         # NOTE: Requires rclone configured with 'gdrive' remote using Service Account
+        # Use --drive-root-folder-id to access shared folder by ID
         cmd = [
             "rclone",
             "sync",
-            f"gdrive:{drive_folder_id}",
+            "gdrive:",  # Use root, folder specified via --drive-root-folder-id
             dest,
+            "--drive-root-folder-id", drive_folder_id,  # Access folder by ID
             "--drive-service-account-file", os.environ.get(
                 "GOOGLE_APPLICATION_CREDENTIALS", ""
             ),
@@ -189,7 +191,6 @@ class IngestionService:
             "--progress",
             "--log-level", "INFO",
             "--stats", "1s",
-            "-v",
         ]
 
         # Remove empty arguments
@@ -202,12 +203,19 @@ class IngestionService:
                 subprocess.run,
                 cmd,
                 capture_output=True,
-                text=True,
                 timeout=3600,  # 1 hour timeout
             )
 
-            sync_log = result.stdout.split("\n") if result.stdout else []
-            errors = result.stderr.split("\n") if result.stderr else []
+            # Decode output with error handling for Korean filenames
+            try:
+                stdout = result.stdout.decode("utf-8", errors="replace")
+                stderr = result.stderr.decode("utf-8", errors="replace")
+            except Exception:
+                stdout = ""
+                stderr = ""
+
+            sync_log = stdout.split("\n") if stdout else []
+            errors = stderr.split("\n") if stderr else []
 
             # Count synced files
             files_synced = self._count_files(dest)

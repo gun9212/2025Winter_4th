@@ -9,7 +9,6 @@ celery_app = Celery(
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
-        "app.tasks.document",
         "app.tasks.pipeline",
         "app.tasks.embedding",
     ],
@@ -31,17 +30,13 @@ celery_app.conf.update(
     # Worker settings
     worker_prefetch_multiplier=1,
     worker_concurrency=4,
-    # Task routing
-    task_routes={
-        "app.tasks.document.*": {"queue": "document"},
-        "app.tasks.pipeline.*": {"queue": "pipeline"},
-        "app.tasks.embedding.*": {"queue": "embedding"},
-    },
+    # Task routing (기본 celery queue 사용)
+    # task_routes={
+    #     "app.tasks.pipeline.*": {"queue": "pipeline"},
+    #     "app.tasks.embedding.*": {"queue": "embedding"},
+    # },
     # Task annotations
     task_annotations={
-        "app.tasks.document.process_document": {
-            "rate_limit": "10/m",  # Max 10 documents per minute
-        },
         "app.tasks.pipeline.run_full_pipeline": {
             "rate_limit": "5/m",  # Max 5 pipeline runs per minute (API limits)
         },

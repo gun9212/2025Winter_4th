@@ -2,21 +2,29 @@
 
 이 모듈은 RAG 시스템의 핵심 API 엔드포인트를 정의합니다:
 - 문서 수집 (Ingestion): Celery 태스크로 비동기 처리
-- 검색 (Search): 벡터 유사도 기반 검색 (팀원 담당)
+- 검색 (Search): 벡터 유사도 기반 검색 + LLM 답변 생성
 - 문서 목록 조회
 """
 
 import structlog
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import func, select
 
 from app.api.deps import ApiKey, DbSession
+from app.models.document import Document
+from app.models.embedding import DocumentChunk
+from app.pipeline.step_07_embed import EmbeddingService
 from app.schemas.rag_dto import (
+    DocumentInfo,
     DocumentListResponse,
     IngestRequest,
     IngestResponse,
     SearchRequest,
     SearchResponse,
+    SearchResult,
+    SourceReference,
 )
+from app.services.ai.gemini import GeminiService
 
 # Celery 태스크 import
 from app.tasks.pipeline import ingest_folder as ingest_folder_task
@@ -24,6 +32,9 @@ from app.tasks.pipeline import ingest_folder as ingest_folder_task
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# 제휴 업체 키워드 (간식/회식 관련 쿼리 시 사용)
+PARTNER_KEYWORDS = {"간식", "회식", "음식", "배달", "식사", "먹", "제휴"}
 
 
 @router.post(
@@ -120,10 +131,10 @@ async def ingest_folder(
     summary="문서 검색",
     description="""
     하이브리드 벡터 검색으로 인덱싱된 문서를 검색합니다.
-    
+
     **다중 턴 대화는 `/api/v1/chat` 엔드포인트를 사용하세요.**
     이 엔드포인트는 대화 컨텍스트 없는 직접 검색용입니다.
-    
+
     **검색 전략:**
     1. Vertex AI로 쿼리 임베딩
     2. Child 청크에서 벡터 유사도 검색
@@ -139,24 +150,118 @@ async def search_documents(
 ) -> SearchResponse:
     """
     RAG를 사용하여 인덱싱된 문서를 검색합니다.
-    
+
     대화 컨텍스트가 포함된 검색은 /chat 엔드포인트를 사용하세요.
-    
-    TODO: 팀원이 구현 예정
-    - 쿼리 임베딩
-    - pgvector로 벡터 유사도 검색
-    - 하이브리드 스코어링 (시맨틱 + 시간 가중치) 적용
-    - access_level로 필터링
-    - Parent 컨텍스트와 함께 LLM 응답 생성
     """
-    # TODO: RAG 검색 구현 (팀원 담당)
-    
-    return SearchResponse(
-        query=request.query,
-        results=[],
-        answer=None,
-        sources=[],
-    )
+    try:
+        embedding_service = EmbeddingService(db)
+
+        # Step 1: 쿼리 임베딩 생성
+        logger.info("Generating query embedding", query=request.query[:50])
+        query_embedding = await embedding_service.embed_single(request.query)
+
+        # Step 2: 하이브리드 검색 (시맨틱 + 시간 가중치)
+        logger.info("Searching with time decay", top_k=request.top_k)
+        search_results = await embedding_service.search_with_time_decay(
+            query_embedding=query_embedding,
+            limit=request.top_k,
+            access_level=4,  # 기본값: 공개 문서만 (추후 사용자 레벨 연동)
+        )
+
+        if not search_results:
+            logger.info("No search results found", query=request.query[:50])
+            return SearchResponse(
+                query=request.query,
+                results=[],
+                answer="관련 문서를 찾을 수 없습니다." if request.generate_answer else None,
+                sources=[],
+            )
+
+        # Step 3: 결과 변환
+        results: list[SearchResult] = []
+        sources: list[SourceReference] = []
+        context_chunks: list[str] = []
+        seen_doc_ids: set[int] = set()
+
+        for item in search_results:
+            # SearchResult 생성
+            results.append(
+                SearchResult(
+                    document_id=item["document_id"],
+                    document_name=item["document_name"],
+                    chunk_content=item["content"],
+                    similarity_score=item.get("final_score", item.get("semantic_score", 0.0)),
+                    metadata={
+                        "section_header": item.get("section_header"),
+                        "semantic_score": item.get("semantic_score"),
+                        "time_score": item.get("time_score"),
+                    },
+                )
+            )
+
+            # 중복 제거하여 SourceReference 생성
+            doc_id = item["document_id"]
+            if doc_id not in seen_doc_ids:
+                seen_doc_ids.add(doc_id)
+                sources.append(
+                    SourceReference(
+                        document_id=doc_id,
+                        document_name=item["document_name"],
+                        drive_id=item["drive_id"],
+                        url=f"https://drive.google.com/file/d/{item['drive_id']}/view",
+                    )
+                )
+
+            # LLM 컨텍스트용 청크 수집 (parent_content 우선 사용)
+            if request.include_context and item.get("parent_content"):
+                context_chunks.append(item["parent_content"])
+            else:
+                context_chunks.append(item["content"])
+
+        # Step 4: LLM 답변 생성 (옵션)
+        answer = None
+        partner_info = None
+
+        if request.generate_answer and context_chunks:
+            # 제휴 업체 키워드 체크
+            query_has_partner_keyword = any(
+                keyword in request.query for keyword in PARTNER_KEYWORDS
+            )
+            if query_has_partner_keyword:
+                # TODO: 실제 제휴 업체 정보 DB에서 조회
+                partner_info = {
+                    "message": "제휴 업체 정보는 별도 테이블에서 조회 필요",
+                }
+
+            logger.info("Generating LLM answer", context_count=len(context_chunks))
+            gemini_service = GeminiService()
+            answer = gemini_service.generate_answer(
+                query=request.query,
+                context=context_chunks,
+                partner_info=partner_info,
+            )
+
+        logger.info(
+            "Search completed",
+            query=request.query[:50],
+            results_count=len(results),
+            answer_generated=answer is not None,
+        )
+
+        return SearchResponse(
+            query=request.query,
+            results=results,
+            answer=answer,
+            sources=sources,
+            partner_info=partner_info,
+        )
+
+    except Exception as e:
+        logger.exception("Search failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"검색 중 오류가 발생했습니다: {str(e)}",
+        )
 
 
 @router.get(
@@ -170,17 +275,94 @@ async def list_documents(
     api_key: ApiKey,
     skip: int = 0,
     limit: int = 20,
+    status_filter: str | None = None,
 ) -> DocumentListResponse:
     """
     인덱싱된 모든 문서를 조회합니다.
-    
+
     청크 상세 정보 없이 문서 메타데이터만 반환합니다.
-    
-    TODO: 데이터베이스에서 문서 목록 조회 구현
+
+    Args:
+        skip: 건너뛸 문서 수 (페이지네이션)
+        limit: 반환할 최대 문서 수
+        status_filter: 상태 필터 (pending, completed, failed 등)
     """
-    return DocumentListResponse(
-        total=0,
-        documents=[],
-        skip=skip,
-        limit=limit,
-    )
+    try:
+        # 전체 문서 수 조회
+        count_query = select(func.count(Document.id))
+        if status_filter:
+            count_query = count_query.where(Document.status == status_filter)
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        # 문서 목록 조회 (chunk_count 포함)
+        # 서브쿼리로 각 문서의 청크 수 계산
+        chunk_count_subq = (
+            select(
+                DocumentChunk.document_id,
+                func.count(DocumentChunk.id).label("chunk_count"),
+            )
+            .group_by(DocumentChunk.document_id)
+            .subquery()
+        )
+
+        query = (
+            select(
+                Document,
+                func.coalesce(chunk_count_subq.c.chunk_count, 0).label("chunk_count"),
+            )
+            .outerjoin(
+                chunk_count_subq,
+                Document.id == chunk_count_subq.c.document_id,
+            )
+            .order_by(Document.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+
+        if status_filter:
+            query = query.where(Document.status == status_filter)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        # DocumentInfo 리스트 생성
+        documents: list[DocumentInfo] = []
+        for row in rows:
+            doc = row[0]  # Document 객체
+            chunk_count = row[1]  # chunk_count
+
+            documents.append(
+                DocumentInfo(
+                    id=doc.id,
+                    drive_id=doc.drive_id,
+                    name=doc.standardized_name or doc.drive_name,
+                    doc_type=doc.doc_type.value if doc.doc_type else "other",
+                    status=doc.status.value if doc.status else "pending",
+                    chunk_count=chunk_count,
+                    created_at=doc.created_at,
+                    updated_at=doc.updated_at,
+                )
+            )
+
+        logger.info(
+            "Documents listed",
+            total=total,
+            returned=len(documents),
+            skip=skip,
+            limit=limit,
+        )
+
+        return DocumentListResponse(
+            total=total,
+            documents=documents,
+            skip=skip,
+            limit=limit,
+        )
+
+    except Exception as e:
+        logger.exception("Failed to list documents", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"문서 목록 조회 중 오류가 발생했습니다: {str(e)}",
+        )

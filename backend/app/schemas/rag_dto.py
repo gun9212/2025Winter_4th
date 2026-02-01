@@ -35,6 +35,10 @@ class IngestOptions(BaseModel):
         default=["*.tmp", "~*"],
         description="Glob patterns for files to exclude",
     )
+    skip_sync: bool = Field(
+        default=False,
+        description="If true, skip rclone sync (use local files only)",
+    )
 
 
 class IngestRequest(BaseModel):

@@ -1,21 +1,4 @@
 services:
-  db:
-    image: pgvector/pgvector:pg16
-    container_name: council-ai-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-council}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-council_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-council_ai}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-council} -d ${POSTGRES_DB:-council_ai}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: council-ai-redis
@@ -42,21 +25,21 @@ services:
       - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
-      - ~/.config/rclone:/home/appuser/.config/rclone:ro
+      - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-council}:${POSTGRES_PASSWORD:-council_secret}@db:5432/${POSTGRES_DB:-council_ai}
+      # 원격 DB 사용 (.env의 DATABASE_URL)
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
       - DEBUG=${DEBUG:-true}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -72,25 +55,24 @@ services:
       - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
-      - ~/.config/rclone:/home/appuser/.config/rclone:ro
+      - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-council}:${POSTGRES_PASSWORD:-council_secret}@db:5432/${POSTGRES_DB:-council_ai}
+      # 원격 DB 사용 (.env의 DATABASE_URL)
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
       - DEBUG=${DEBUG:-true}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A app.tasks.celery_app worker --loglevel=info
 
 volumes:
-  postgres_data:
   redis_data:
