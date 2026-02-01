@@ -81,13 +81,17 @@ def embed_documents_task(
         from sqlalchemy import select
         from app.models.document import Document, DocumentStatus
         from app.models.embedding import DocumentChunk
-        from app.services.ai.embeddings import EmbeddingService
+        from app.pipeline.step_07_embed import EmbeddingService
 
-        embedding_service = EmbeddingService()
+        # Note: This task is currently not used. Main embedding is done in pipeline.py
+        embedding_service = None  # Will be initialized with db session
         total_embedded = 0
         failed_chunks: list[int] = []
 
         async with async_session_factory() as db:
+            # Initialize embedding service with db session
+            embedding_service = EmbeddingService(db)
+
             # Get chunks for the specified documents
             result = await db.execute(
                 select(DocumentChunk)
@@ -95,7 +99,7 @@ def embed_documents_task(
                 .where(DocumentChunk.is_parent == False)  # noqa: E712
                 .where(DocumentChunk.embedding == None)  # noqa: E711
             )
-            chunks = result.scalars().all()
+            chunks = list(result.scalars().all())
 
             if not chunks:
                 return {
@@ -105,36 +109,18 @@ def embed_documents_task(
                     "chunks_embedded": 0,
                 }
 
-            # Process in batches
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
-                texts = [chunk.content for chunk in batch]
+            # Use EmbeddingService.embed_chunks for batch processing
+            try:
+                embed_result = await embedding_service.embed_chunks(
+                    chunks=chunks,
+                    batch_size=batch_size,
+                )
+                total_embedded = embed_result.chunks_embedded
+                failed_chunks = embed_result.failed_chunks
 
-                try:
-                    # Generate embeddings (sync method for Celery)
-                    embeddings = embedding_service.embed_documents(texts)
-
-                    # Update chunks with embeddings
-                    for chunk, embedding in zip(batch, embeddings):
-                        chunk.embedding = embedding
-
-                    await db.flush()
-                    total_embedded += len(batch)
-
-                    # Update progress
-                    progress = int((i + len(batch)) / len(chunks) * 100)
-                    self.update_state(
-                        state="PROGRESS",
-                        meta={"progress": progress, "chunks_embedded": total_embedded},
-                    )
-
-                except Exception as e:
-                    logger.error(
-                        "Batch embedding failed",
-                        batch_start=i,
-                        error=str(e),
-                    )
-                    failed_chunks.extend([c.id for c in batch])
+            except Exception as e:
+                logger.error("Embedding failed", error=str(e))
+                failed_chunks = [c.id for c in chunks]
 
             # Update document status
             for doc_id in document_ids:

@@ -262,44 +262,89 @@ class MetadataEnrichmentService:
     ) -> int | None:
         """
         Find or create an event to associate with the document.
-        
+
         Args:
             document: Document to associate
             event_title: Event title hint
             year: Event year
             category: Event category (department)
-            
+
         Returns:
             Event ID if found/created, None otherwise
         """
-        if not event_title and not year:
+        # Try to infer event from document name if not provided
+        if not event_title:
+            event_title = self._infer_event_from_document(document)
+
+        if not event_title:
             return None
 
-        # Try to find existing event
-        query = select(Event)
-        if event_title:
-            query = query.where(Event.title.ilike(f"%{event_title}%"))
+        # Use current year if not provided
+        if not year:
+            year = date.today().year
+
+        # Try to find existing event with fuzzy matching
+        query = select(Event).where(Event.title.ilike(f"%{event_title}%"))
         if year:
             query = query.where(Event.year == year)
-        
+
         result = await self.db.execute(query.limit(1))
         event = result.scalar_one_or_none()
 
         if event:
+            logger.info("Found existing event", event_id=event.id, title=event.title)
             return event.id
 
-        # Create new event if we have enough info
-        if event_title and year:
-            new_event = Event(
-                title=event_title,
-                year=year,
-                category=category,
-            )
-            self.db.add(new_event)
-            await self.db.flush()
-            
-            logger.info("Created new event", title=event_title, year=year)
-            return new_event.id
+        # Create new event
+        new_event = Event(
+            title=event_title,
+            year=year,
+            category=category,
+        )
+        self.db.add(new_event)
+        await self.db.flush()
+
+        logger.info("Created new event", event_id=new_event.id, title=event_title, year=year)
+        return new_event.id
+
+    def _infer_event_from_document(self, document: Document) -> str | None:
+        """
+        Infer event name from document name and metadata.
+
+        Args:
+            document: Document to analyze
+
+        Returns:
+            Inferred event name or None
+        """
+        import re
+
+        name = document.drive_name or document.standardized_name or ""
+
+        # Common event patterns in student council documents
+        event_patterns = [
+            # "제N차 OOO 회의" -> "OOO"
+            r"제?\d+차\s*(.+?)\s*회의",
+            # "OOO 관련" -> "OOO"
+            r"(.+?)\s*관련",
+            # Extract meeting type (국장단, 운영위, 집행위)
+            r"(국장단|운영위원회|집행위원회|학생총회)",
+        ]
+
+        for pattern in event_patterns:
+            match = re.search(pattern, name)
+            if match:
+                event_name = match.group(1).strip()
+                if event_name and len(event_name) > 1:
+                    return event_name
+
+        # If document is a meeting document, use meeting type as event
+        if document.doc_category == DocumentCategory.MEETING_DOCUMENT:
+            # Extract year and term from document name
+            year_match = re.search(r"제?(\d+)대", name)
+            if year_match:
+                term = year_match.group(1)
+                return f"제{term}대 정기회의"
 
         return None
 

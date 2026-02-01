@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.ai.embeddings import EmbeddingService
+from app.pipeline.step_07_embed import EmbeddingService
 
 
 class VectorRetriever:
@@ -13,7 +13,7 @@ class VectorRetriever:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self.embedding_service = EmbeddingService()
+        self.embedding_service = EmbeddingService(db)
 
     async def search(
         self,
@@ -32,8 +32,8 @@ class VectorRetriever:
         Returns:
             List of search results with similarity scores.
         """
-        # Generate query embedding
-        query_embedding = self.embedding_service.embed_query(query)
+        # Generate query embedding (using Vertex AI text-embedding-004)
+        query_embedding = await self.embedding_service.embed_single(query)
 
         # pgvector cosine distance search
         sql = text("""
@@ -100,7 +100,7 @@ class VectorRetriever:
         Returns:
             Filtered search results.
         """
-        query_embedding = self.embedding_service.embed_query(query)
+        query_embedding = await self.embedding_service.embed_single(query)
 
         # Build dynamic query with filters
         conditions = ["dc.embedding IS NOT NULL"]
