@@ -44,7 +44,6 @@ services:
     volumes:
       - ./backend:/app
       - ./credentials:/app/credentials:ro
-      - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
@@ -78,7 +77,6 @@ services:
     volumes:
       - ./backend:/app
       - ./credentials:/app/credentials:ro
-      - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
