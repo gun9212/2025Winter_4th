@@ -2,121 +2,971 @@
 <html>
 <head>
   <base target="_top">
-  <?!= HtmlService.createHtmlOutputFromFile('Styles').getContent(); ?>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- TailwindCSS v3.4.1 -->
+  <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+  
+  <!-- Marked.js v4.0.0 for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js"></script>
+  
+  <!-- Highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/sql.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+  
+  <!-- Google Picker API -->
+  <script src="https://apis.google.com/js/api.js"></script>
+  
+  <script>
+    // TailwindCSS 커스텀 설정
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'google-blue': '#1a73e8',
+            'google-blue-dark': '#1557b0',
+            'google-gray': '#5f6368',
+            'google-light': '#f1f3f4',
+          }
+        }
+      }
+    }
+    
+    // Marked.js 설정 (highlight.js 연동)
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
+        marked.setOptions({
+          highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+              try {
+                return hljs.highlight(code, { language: lang }).value;
+              } catch (e) {}
+            }
+            return hljs.highlightAuto(code).value;
+          },
+          breaks: true,
+          gfm: true
+        });
+      }
+    });
+  </script>
+  
+  <style>
+    /* 스크롤바 스타일 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a1a1a1;
+    }
+    
+    /* 채팅 메시지 마크다운 스타일 */
+    .chat-message code {
+      background-color: #f1f3f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.875em;
+    }
+    .chat-message pre {
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .chat-message pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+    .chat-message ul, .chat-message ol {
+      margin-left: 1.5em;
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
+    }
+    .chat-message li {
+      margin-bottom: 0.25em;
+    }
+    
+    /* 로딩 스피너 */
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1a73e8;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* 토스트 애니메이션 */
+    .toast-enter {
+      animation: slideIn 0.3s ease-out;
+    }
+    .toast-exit {
+      animation: slideOut 0.3s ease-in forwards;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(-100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateY(0); opacity: 1; }
+      to { transform: translateY(-100%); opacity: 0; }
+    }
+    
+    /* 버튼 비활성화 스타일 */
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    /* 탭 트랜지션 */
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    /* Highlight.js 코드 블록 개선 */
+    .chat-message pre {
+      position: relative;
+    }
+    .chat-message pre .code-lang {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      font-size: 10px;
+      color: #888;
+      text-transform: uppercase;
+    }
+    .chat-message pre .copy-btn {
+      position: absolute;
+      top: 4px;
+      right: 60px;
+      padding: 2px 8px;
+      font-size: 10px;
+      background: #333;
+      color: #aaa;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .chat-message pre:hover .copy-btn {
+      opacity: 1;
+    }
+    .chat-message pre .copy-btn:hover {
+      background: #444;
+      color: #fff;
+    }
+    
+    /* Source 링크 스타일 */
+    .source-item {
+      padding: 8px 12px;
+      margin: 4px 0;
+      background: #f8f9fa;
+      border-left: 3px solid #1a73e8;
+      border-radius: 0 6px 6px 0;
+      transition: all 0.2s;
+    }
+    .source-item:hover {
+      background: #e8f0fe;
+      transform: translateX(2px);
+    }
+    .source-link {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .source-link:hover {
+      text-decoration: underline;
+    }
+    .source-section {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+    .source-score {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 10px;
+      background: #1a73e8;
+      color: white;
+      border-radius: 10px;
+      margin-left: 8px;
+    }
+    .source-score.high {
+      background: #34a853;
+    }
+    .source-score.medium {
+      background: #fbbc04;
+      color: #333;
+    }
+    .source-score.low {
+      background: #ea4335;
+    }
+    
+    /* Sources 토글 버튼 */
+    .sources-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      margin-top: 8px;
+      background: #f1f3f4;
+      border: none;
+      border-radius: 16px;
+      font-size: 12px;
+      color: #5f6368;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .sources-toggle:hover {
+      background: #e8eaed;
+    }
+    .sources-toggle .arrow {
+      transition: transform 0.2s;
+    }
+    .sources-toggle.expanded .arrow {
+      transform: rotate(180deg);
+    }
+    .sources-container {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .sources-container.expanded {
+      max-height: 500px;
+    }
+    
+    /* 타이핑 인디케이터 */
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 8px 12px;
+    }
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: #1a73e8;
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+    .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+    
+    /* 채팅 메타데이터 */
+    .chat-meta {
+      font-size: 10px;
+      color: #999;
+      margin-top: 4px;
+    }
+    
+    /* Progress Steps 스타일 */
+    .step {
+      transition: all 0.3s ease;
+    }
+    .step.active {
+      color: #1a73e8;
+      font-weight: 500;
+    }
+    .step.active .step-icon {
+      color: #1a73e8;
+      animation: pulse 1.5s infinite;
+    }
+    .step.completed {
+      color: #34a853;
+    }
+    .step.completed .step-icon {
+      color: #34a853;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    /* Todo 카드 스타일 */
+    .todo-card {
+      transition: all 0.2s ease;
+    }
+    .todo-card:hover {
+      border-color: #1a73e8;
+      box-shadow: 0 2px 4px rgba(26, 115, 232, 0.1);
+    }
+    .todo-checkbox:checked + div .todo-summary {
+      color: #1a73e8;
+    }
+  </style>
 </head>
-<body>
-  <div class="sidebar">
+
+<body class="bg-white text-gray-800 text-sm">
+  <!-- 메인 컨테이너 -->
+  <div id="app" class="flex flex-col h-screen">
+    
+    <!-- 헤더 -->
+    <header class="bg-google-blue text-white px-4 py-3 flex items-center justify-between shadow-md">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">🏛️</span>
+        <h1 class="font-medium">Council-AI</h1>
+      </div>
+      <span id="user-email" class="text-xs opacity-80 truncate max-w-[120px]"></span>
+    </header>
+    
     <!-- 탭 네비게이션 -->
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="minutes">
-        <span class="tab-icon">📝</span>
-        <span class="tab-label">회의록</span>
+    <nav class="flex border-b border-gray-200 bg-gray-50">
+      <button class="tab-btn flex-1 py-3 px-2 text-center border-b-2 border-transparent hover:bg-gray-100 transition-colors" data-tab="chat">
+        <span class="text-lg block">💬</span>
+        <span class="text-xs text-google-gray">Chat</span>
       </button>
-      <button class="tab-btn" data-tab="search">
-        <span class="tab-icon">🔍</span>
-        <span class="tab-label">검색</span>
+      <button class="tab-btn flex-1 py-3 px-2 text-center border-b-2 border-transparent hover:bg-gray-100 transition-colors" data-tab="docs">
+        <span class="text-lg block">📝</span>
+        <span class="text-xs text-google-gray">Docs</span>
       </button>
-      <button class="tab-btn" data-tab="calendar">
-        <span class="tab-icon">📅</span>
-        <span class="tab-label">일정</span>
+      <button class="tab-btn flex-1 py-3 px-2 text-center border-b-2 border-transparent hover:bg-gray-100 transition-colors" data-tab="calendar">
+        <span class="text-lg block">📅</span>
+        <span class="text-xs text-google-gray">Calendar</span>
       </button>
-    </div>
-
-    <!-- 회의록 탭 -->
-    <div id="minutes-tab" class="tab-content active">
-      <div class="section">
-        <h3>회의록 자동 생성</h3>
-        <p class="description">현재 문서를 안건지로 사용하여 회의록을 생성합니다.</p>
-
-        <div class="form-group">
-          <label for="transcript">속기록 / 녹취록</label>
-          <textarea id="transcript" rows="8" placeholder="회의 내용을 입력하세요..."></textarea>
-        </div>
-
-        <button id="process-minutes-btn" class="btn btn-primary">
-          회의록 생성
-        </button>
-
-        <div id="minutes-result" class="result-box hidden">
-          <div class="result-header">
-            <span class="status-icon">⏳</span>
-            <span id="minutes-status">처리 중...</span>
+      <button class="tab-btn flex-1 py-3 px-2 text-center border-b-2 border-transparent hover:bg-gray-100 transition-colors" data-tab="admin">
+        <span class="text-lg block">⚙️</span>
+        <span class="text-xs text-google-gray">Admin</span>
+      </button>
+    </nav>
+    
+    <!-- 탭 콘텐츠 영역 -->
+    <main class="flex-1 overflow-hidden">
+      
+      <!-- ========== Chat Tab ========== -->
+      <div id="chat-tab" class="tab-content h-full flex flex-col">
+        <!-- 채팅 히스토리 -->
+        <div id="chat-history" class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- 웰컴 메시지 -->
+          <div class="text-center text-gray-500 py-8">
+            <span class="text-4xl block mb-2">🤖</span>
+            <p class="text-sm">학생회 문서에 대해 무엇이든 물어보세요!</p>
+            <p class="text-xs text-gray-400 mt-1">예: "2024년 축제 예산은 얼마였나요?"</p>
           </div>
-          <div id="minutes-details" class="result-details"></div>
+        </div>
+        
+        <!-- 채팅 입력 -->
+        <div class="border-t border-gray-200 p-3 bg-white">
+          <div class="flex gap-2">
+            <textarea 
+              id="chat-input" 
+              class="flex-1 border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-google-blue focus:border-transparent"
+              placeholder="메시지를 입력하세요..."
+              rows="2"
+            ></textarea>
+            <button 
+              id="chat-send-btn"
+              class="bg-google-blue text-white px-4 rounded-lg hover:bg-google-blue-dark transition-colors flex items-center justify-center"
+              title="전송"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+              </svg>
+            </button>
+          </div>
+          <div class="flex justify-between mt-2 text-xs text-gray-400">
+            <span>Shift+Enter로 줄바꿈</span>
+            <button id="chat-clear-btn" class="text-red-500 hover:underline">대화 초기화</button>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- 검색 탭 -->
-    <div id="search-tab" class="tab-content">
-      <div class="section">
-        <h3>지식 DB 검색</h3>
-        <p class="description">학생회 문서에서 정보를 검색합니다.</p>
-
-        <div class="form-group">
-          <label for="search-query">검색어</label>
-          <input type="text" id="search-query" placeholder="검색어를 입력하세요...">
-        </div>
-
-        <div class="form-group">
-          <label for="top-k">결과 개수</label>
-          <select id="top-k">
-            <option value="3">3개</option>
-            <option value="5" selected>5개</option>
-            <option value="10">10개</option>
-          </select>
-        </div>
-
-        <button id="search-btn" class="btn btn-primary">
-          검색
-        </button>
-
-        <div id="search-result" class="result-box hidden">
-          <div class="answer-section">
-            <h4>AI 답변</h4>
-            <div id="search-answer"></div>
-          </div>
-
-          <div class="sources-section">
-            <h4>참고 문서</h4>
-            <ul id="search-sources"></ul>
-          </div>
-
-          <button id="insert-answer-btn" class="btn btn-secondary">
-            문서에 삽입
-          </button>
+      
+      <!-- ========== Docs Tab ========== -->
+      <div id="docs-tab" class="tab-content h-full overflow-y-auto p-4">
+        <div class="space-y-6">
+          <!-- Smart Minutes 섹션 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+              <span>📋</span> Smart Minutes (결과지 생성)
+            </h3>
+            
+            <!-- 안건지 선택 -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">안건지 *</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="agenda-doc-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="Google Docs ID"
+                  readonly
+                >
+                <button 
+                  id="pick-agenda-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="agenda-doc-id"
+                  data-type="doc"
+                >
+                  📂 선택
+                </button>
+              </div>
+              <p id="agenda-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <!-- 속기록 선택 -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">속기록</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="transcript-doc-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="Google Docs ID (선택)"
+                  readonly
+                >
+                <button 
+                  id="pick-transcript-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="transcript-doc-id"
+                  data-type="doc"
+                >
+                  📂 선택
+                </button>
+              </div>
+              <p id="transcript-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <!-- 템플릿 선택 (선택) -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">템플릿 (선택)</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="template-doc-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="템플릿 ID (미입력시 안건지 복사)"
+                  readonly
+                >
+                <button 
+                  id="pick-template-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="template-doc-id"
+                  data-type="doc"
+                >
+                  📂 선택
+                </button>
+              </div>
+              <p id="template-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+              <button 
+                id="inspect-template-btn"
+                class="text-xs text-google-blue hover:underline mt-1 disabled:opacity-50"
+                disabled
+              >
+                🔍 템플릿 검사 (Placeholder 확인)
+              </button>
+            </div>
+            
+            <!-- 회의 정보 -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label class="block text-xs text-google-gray mb-1">회의명 *</label>
+                <input 
+                  type="text" 
+                  id="meeting-name" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="예: 제12차 운영위원회"
+                >
+              </div>
+              <div>
+                <label class="block text-xs text-google-gray mb-1">회의일자 *</label>
+                <input 
+                  type="date" 
+                  id="meeting-date" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                >
+              </div>
+            </div>
+            
+            <!-- 출력 폴더 -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">출력 폴더 (선택)</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="output-folder-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="폴더 ID"
+                  readonly
+                >
+                <button 
+                  id="pick-output-folder-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="output-folder-id"
+                  data-type="folder"
+                >
+                  📁 선택
+                </button>
+              </div>
+              <p id="output-folder-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <!-- 생성 버튼 -->
+            <button 
+              id="generate-minutes-btn"
+              class="w-full bg-google-blue text-white py-2.5 rounded-lg hover:bg-google-blue-dark transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <span>✨</span> 결과지 생성
+            </button>
+            
+            <!-- 진행 상태 표시 (단계별 체크리스트) -->
+            <div id="minutes-progress" class="hidden mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <p id="minutes-status-text" class="text-sm font-medium text-gray-700">처리 중...</p>
+                <span id="minutes-elapsed-time" class="text-xs text-gray-500">0:00</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                <div id="minutes-progress-bar" class="bg-google-blue h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+              <!-- 단계별 체크리스트 -->
+              <div id="minutes-steps" class="space-y-2 text-xs">
+                <div class="step flex items-center gap-2" data-step="parse">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>문서 파싱 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="analyze">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>안건 분석 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="generate">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>결과지 생성 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="finalize">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>문서 저장 중...</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 결과 표시 -->
+            <div id="minutes-result" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-2xl">🎉</span>
+                <div>
+                  <p class="text-green-800 font-medium">결과지가 생성되었습니다!</p>
+                  <p id="minutes-result-time" class="text-xs text-green-600"></p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <a 
+                  id="minutes-result-link" 
+                  href="#" 
+                  target="_blank"
+                  class="flex-1 inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded hover:bg-green-50 transition-colors"
+                >
+                  📄 결과지 열기
+                </a>
+                <button 
+                  id="minutes-copy-link-btn"
+                  class="px-3 py-2 bg-white border border-green-300 text-green-700 rounded hover:bg-green-50 transition-colors"
+                  title="링크 복사"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
-    </div>
-
-    <!-- 일정 탭 -->
-    <div id="calendar-tab" class="tab-content">
-      <div class="section">
-        <h3>일정 추출 및 등록</h3>
-        <p class="description">문서에서 일정을 추출하여 캘린더에 등록합니다.</p>
-
-        <button id="extract-events-btn" class="btn btn-primary">
-          일정 추출
-        </button>
-
-        <div id="calendar-result" class="result-box hidden">
-          <h4>추출된 일정</h4>
-          <div id="events-list"></div>
-
-          <button id="register-all-btn" class="btn btn-secondary hidden">
-            모두 캘린더에 등록
-          </button>
+      
+      <!-- ========== Calendar Tab ========== -->
+      <div id="calendar-tab" class="tab-content h-full overflow-y-auto p-4">
+        <div class="space-y-6">
+          <!-- Todo 추출 섹션 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+              <span>📅</span> 할일 추출 & 캘린더 등록
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">결과지에서 할일을 추출하고, 검토 후 캘린더에 등록합니다.</p>
+            
+            <!-- 결과지 선택 -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">결과지 선택 *</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="calendar-source-doc-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="Google Docs ID"
+                  readonly
+                >
+                <button 
+                  id="pick-calendar-source-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="calendar-source-doc-id"
+                  data-type="doc"
+                >
+                  📂 선택
+                </button>
+              </div>
+              <p id="calendar-source-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <!-- 추출 버튼 -->
+            <button 
+              id="extract-todos-btn"
+              class="w-full bg-google-blue text-white py-2.5 rounded-lg hover:bg-google-blue-dark transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <span>🔍</span> 할일 추출
+            </button>
+            
+            <!-- 추출 진행 상태 -->
+            <div id="extract-progress" class="hidden mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="spinner"></div>
+                <p class="text-sm text-blue-700">할일을 추출하고 있습니다...</p>
+              </div>
+            </div>
+          </section>
+          
+          <!-- Todo 목록 섹션 -->
+          <section id="todos-section" class="hidden">
+            <div class="flex justify-between items-center mb-3">
+              <h4 class="font-medium text-gray-800 flex items-center gap-2">
+                📋 추출된 할일 
+                <span id="todos-count" class="text-xs bg-google-blue text-white px-2 py-0.5 rounded-full">0</span>
+              </h4>
+              <label class="flex items-center gap-2 text-xs text-gray-600">
+                <input type="checkbox" id="select-all-todos" checked class="rounded">
+                전체 선택
+              </label>
+            </div>
+            
+            <!-- 선택된 항목 수 표시 -->
+            <div class="mb-3 text-xs text-gray-500">
+              <span id="selected-todos-count">0</span>개 선택됨
+            </div>
+            
+            <!-- Todo 카드 목록 -->
+            <div id="todos-list" class="space-y-3 max-h-[350px] overflow-y-auto">
+              <!-- 동적으로 생성됨 -->
+            </div>
+            
+            <!-- 캘린더 등록 버튼 -->
+            <button 
+              id="register-todos-btn"
+              class="w-full mt-4 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <span>📅</span> 선택한 항목 캘린더 등록
+            </button>
+            
+            <!-- 등록 진행 상태 -->
+            <div id="register-progress" class="hidden mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div class="flex items-center justify-between mb-2">
+                <p id="register-status-text" class="text-sm font-medium text-gray-700">등록 중...</p>
+                <span id="register-progress-count" class="text-xs text-gray-500">0/0</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="register-progress-bar" class="bg-green-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+            </div>
+            
+            <!-- 등록 결과 -->
+            <div id="register-result" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-xl">✅</span>
+                <p class="text-green-800 font-medium">캘린더 등록 완료!</p>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-sm">
+                <div class="bg-white p-2 rounded border border-green-200">
+                  <span class="text-green-600 font-medium" id="register-success-count">0</span>
+                  <span class="text-gray-600">개 성공</span>
+                </div>
+                <div class="bg-white p-2 rounded border border-red-200">
+                  <span class="text-red-600 font-medium" id="register-fail-count">0</span>
+                  <span class="text-gray-600">개 실패</span>
+                </div>
+              </div>
+              <a 
+                href="https://calendar.google.com" 
+                target="_blank"
+                class="mt-3 w-full inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded hover:bg-green-50 transition-colors text-sm"
+              >
+                📅 Google 캘린더에서 확인
+              </a>
+            </div>
+          </section>
         </div>
       </div>
+      
+      <!-- ========== Admin Tab ========== -->
+      <div id="admin-tab" class="tab-content h-full overflow-y-auto p-4">
+        <div class="space-y-6">
+          <!-- 자료 학습 섹션 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+              <span>📚</span> 자료 학습 (Ingestion)
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">Google Drive 폴더의 문서를 RAG 시스템에 학습시킵니다.</p>
+            
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">학습 폴더 선택 *</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="ingest-folder-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="폴더 ID"
+                  readonly
+                >
+                <button 
+                  id="pick-ingest-folder-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="ingest-folder-id"
+                  data-type="folder"
+                >
+                  📁 선택
+                </button>
+              </div>
+              <p id="ingest-folder-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <button 
+              id="start-ingest-btn"
+              class="w-full bg-purple-600 text-white py-2.5 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <span>🚀</span> 자료 학습 시작
+            </button>
+            
+            <!-- 인제스트 진행 상태 -->
+            <div id="ingest-progress" class="hidden mt-4 p-3 bg-gray-50 rounded-lg">
+              <div class="flex items-center gap-3">
+                <div class="spinner"></div>
+                <p id="ingest-status-text" class="text-sm">학습 중...</p>
+              </div>
+            </div>
+          </section>
+          
+          <!-- 인수인계서 생성 섹션 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+              <span>📜</span> 인수인계서 생성
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">연도별 인수인계서를 자동으로 생성합니다.</p>
+            
+            <div class="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label class="block text-xs text-google-gray mb-1">대상 연도 *</label>
+                <select id="handover-year" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                  <option value="2025">2025년</option>
+                  <option value="2024">2024년</option>
+                  <option value="2023">2023년</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-google-gray mb-1">부서 (선택)</label>
+                <input 
+                  type="text" 
+                  id="handover-department" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="예: 문화국"
+                >
+              </div>
+            </div>
+            
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">저장 폴더 (선택)</label>
+              <div class="flex gap-2">
+                <input 
+                  type="text" 
+                  id="handover-folder-id" 
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
+                  placeholder="폴더 ID"
+                  readonly
+                >
+                <button 
+                  id="pick-handover-folder-btn"
+                  class="picker-btn bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  data-target="handover-folder-id"
+                  data-type="folder"
+                >
+                  📁 선택
+                </button>
+              </div>
+              <p id="handover-folder-name" class="text-xs text-gray-500 mt-1 truncate"></p>
+            </div>
+            
+            <button 
+              id="generate-handover-btn"
+              class="w-full bg-orange-600 text-white py-2.5 rounded-lg hover:bg-orange-700 transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <span>📜</span> 인수인계서 생성
+            </button>
+            
+            <!-- 인수인계서 진행 상태 (단계별 체크리스트) -->
+            <div id="handover-progress" class="hidden mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <p id="handover-status-text" class="text-sm font-medium text-gray-700">생성 중...</p>
+                <span id="handover-elapsed-time" class="text-xs text-gray-500">0:00</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                <div id="handover-progress-bar" class="bg-orange-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+              <!-- 단계별 체크리스트 -->
+              <div id="handover-steps" class="space-y-2 text-xs">
+                <div class="step flex items-center gap-2" data-step="collect">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>관련 문서 수집 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="summarize">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>문서 요약 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="generate">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>인수인계서 작성 중...</span>
+                </div>
+                <div class="step flex items-center gap-2" data-step="finalize">
+                  <span class="step-icon text-gray-400">⬜</span>
+                  <span>문서 저장 중...</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 인수인계서 결과 -->
+            <div id="handover-result" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-2xl">📜</span>
+                <div>
+                  <p class="text-green-800 font-medium">인수인계서가 생성되었습니다!</p>
+                  <p id="handover-result-time" class="text-xs text-green-600"></p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <a 
+                  id="handover-result-link" 
+                  href="#" 
+                  target="_blank"
+                  class="flex-1 inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded hover:bg-green-50 transition-colors"
+                >
+                  📜 인수인계서 열기
+                </a>
+                <button 
+                  id="handover-copy-link-btn"
+                  class="px-3 py-2 bg-white border border-green-300 text-green-700 rounded hover:bg-green-50 transition-colors"
+                  title="링크 복사"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+          </section>
+          
+          <!-- 설정 섹션 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="font-medium text-gray-800 mb-3 flex items-center gap-2">
+              <span>⚙️</span> API 설정
+            </h3>
+            
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs text-google-gray mb-1">Backend API URL</label>
+                <input 
+                  type="text" 
+                  id="settings-api-url" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="https://your-backend.com/api/v1"
+                >
+              </div>
+              <div>
+                <label class="block text-xs text-google-gray mb-1">API Key</label>
+                <input 
+                  type="password" 
+                  id="settings-api-key" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="API Key 입력"
+                >
+              </div>
+              <div>
+                <label class="block text-xs text-google-gray mb-1">Google Picker API Key (선택)</label>
+                <input 
+                  type="password" 
+                  id="settings-picker-key" 
+                  class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="Picker API Key"
+                >
+              </div>
+              
+              <button 
+                id="save-settings-btn"
+                class="w-full bg-gray-800 text-white py-2.5 rounded-lg hover:bg-gray-900 transition-colors font-medium"
+              >
+                💾 설정 저장
+              </button>
+              
+              <p id="settings-status" class="text-xs text-center text-gray-500"></p>
+            </div>
+          </section>
+          
+          <!-- 학습된 문서 목록 -->
+          <section class="bg-white border border-gray-200 rounded-lg p-4">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-medium text-gray-800 flex items-center gap-2">
+                <span>📄</span> 학습된 문서
+              </h3>
+              <button id="refresh-docs-btn" class="text-xs text-google-blue hover:underline">
+                🔄 새로고침
+              </button>
+            </div>
+            
+            <div id="documents-list" class="max-h-[200px] overflow-y-auto">
+              <p class="text-xs text-gray-500 text-center py-4">문서 목록을 불러오는 중...</p>
+            </div>
+          </section>
+        </div>
+      </div>
+      
+    </main>
+    
+    <!-- 토스트 메시지 컨테이너 -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- 글로벌 로딩 오버레이 -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40">
+      <div class="bg-white rounded-lg p-6 shadow-xl flex items-center gap-4">
+        <div class="spinner"></div>
+        <span id="loading-text" class="text-gray-700">처리 중...</span>
+      </div>
     </div>
-
-    <!-- 로딩 오버레이 -->
-    <div id="loading-overlay" class="loading-overlay hidden">
-      <div class="spinner"></div>
-      <p>처리 중...</p>
-    </div>
+    
   </div>
-
-  <?!= HtmlService.createHtmlOutputFromFile('Scripts').getContent(); ?>
+  
+  <!-- JavaScript -->
+  <?!= include('Scripts'); ?>
+  
 </body>
 </html>

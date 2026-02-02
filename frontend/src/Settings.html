@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+</head>
+<body class="bg-gray-50 p-6">
+  <div class="max-w-md mx-auto">
+    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+      ⚙️ Council-AI 설정
+    </h2>
+    
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Backend API URL</label>
+        <input 
+          type="text" 
+          id="api-url" 
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="https://your-backend.com/api/v1"
+        >
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+        <input 
+          type="password" 
+          id="api-key" 
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="새 API Key 입력 (변경 시에만)"
+        >
+        <p id="api-key-status" class="text-xs text-gray-500 mt-1"></p>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Google Picker API Key (선택)</label>
+        <input 
+          type="password" 
+          id="picker-key" 
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Picker API Key (변경 시에만)"
+        >
+        <p class="text-xs text-gray-500 mt-1">Google Cloud Console에서 발급받은 API Key</p>
+      </div>
+      
+      <hr class="my-4">
+      
+      <button 
+        id="save-btn"
+        class="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+      >
+        💾 설정 저장
+      </button>
+      
+      <button 
+        id="close-btn"
+        class="w-full bg-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+      >
+        닫기
+      </button>
+      
+      <p id="status-message" class="text-center text-sm"></p>
+    </div>
+  </div>
+  
+  <script>
+    // 현재 설정 로드
+    google.script.run
+      .withSuccessHandler(function(settings) {
+        document.getElementById('api-url').value = settings.apiBaseUrl || '';
+        document.getElementById('api-key-status').textContent = 
+          settings.hasApiKey ? '✅ 현재 설정됨: ' + settings.apiKey : '⚠️ 미설정';
+      })
+      .getAdminSettings();
+    
+    // 저장 버튼
+    document.getElementById('save-btn').addEventListener('click', function() {
+      const btn = this;
+      btn.disabled = true;
+      btn.textContent = '저장 중...';
+      
+      const settings = {
+        apiBaseUrl: document.getElementById('api-url').value,
+        apiKey: document.getElementById('api-key').value || null,
+        pickerApiKey: document.getElementById('picker-key').value || null
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          btn.disabled = false;
+          btn.textContent = '💾 설정 저장';
+          
+          if (result.success) {
+            document.getElementById('status-message').textContent = '✅ 저장되었습니다!';
+            document.getElementById('status-message').className = 'text-center text-sm text-green-600';
+            
+            // 입력 필드 초기화
+            document.getElementById('api-key').value = '';
+            document.getElementById('picker-key').value = '';
+            
+            // 설정 다시 로드
+            google.script.run
+              .withSuccessHandler(function(settings) {
+                document.getElementById('api-key-status').textContent = 
+                  settings.hasApiKey ? '✅ 현재 설정됨: ' + settings.apiKey : '⚠️ 미설정';
+              })
+              .getAdminSettings();
+          } else {
+            document.getElementById('status-message').textContent = '❌ 저장 실패: ' + result.error;
+            document.getElementById('status-message').className = 'text-center text-sm text-red-600';
+          }
+        })
+        .withFailureHandler(function(error) {
+          btn.disabled = false;
+          btn.textContent = '💾 설정 저장';
+          document.getElementById('status-message').textContent = '❌ 오류: ' + error.message;
+          document.getElementById('status-message').className = 'text-center text-sm text-red-600';
+        })
+        .saveAdminSettings(settings);
+    });
+    
+    // 닫기 버튼
+    document.getElementById('close-btn').addEventListener('click', function() {
+      google.script.host.close();
+    });
+  </script>
+</body>
+</html>
