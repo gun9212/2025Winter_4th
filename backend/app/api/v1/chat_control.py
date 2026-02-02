@@ -1,5 +1,6 @@
 """Chat API endpoint for RAG-powered conversations."""
 
+import re
 import time
 from typing import Any
 
@@ -24,6 +25,25 @@ from app.services.chat.rewriter_service import QueryRewriterService
 logger = structlog.get_logger()
 
 router = APIRouter()
+
+# Google Drive ID pattern: alphanumeric with underscores/hyphens, typically 25-50 chars
+_DRIVE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{20,60}$")
+
+
+def _build_drive_link(drive_id: str | None) -> str | None:
+    """
+    Build a Google Drive link if drive_id is valid.
+
+    Returns None if drive_id is missing or doesn't look like a valid ID.
+    """
+    if not drive_id:
+        return None
+
+    # Validate drive_id looks like an actual Google Drive ID
+    if not _DRIVE_ID_PATTERN.match(drive_id):
+        return None
+
+    return f"https://docs.google.com/document/d/{drive_id}/edit"
 
 
 async def save_chat_to_db(
@@ -191,6 +211,8 @@ async def chat(
             access_level=request.user_level,
             semantic_weight=semantic_weight,
             time_weight=time_weight,
+            year_filter=request.options.year_filter,
+            department_filter=request.options.department_filter,
         )
 
         retrieval_latency_ms = int((time.time() - retrieval_start) * 1000)
@@ -211,23 +233,11 @@ async def chat(
             for result in search_results
         ]
 
-        # Check for partner keywords
-        partner_info = None
-        if rewriter.should_search_partners(rewritten_query):
-            # TODO: Implement actual partner business lookup
-            # For now, log that partner info was requested
-            logger.info(
-                "Partner keywords detected",
-                keywords=list(rewriter.extract_partner_keywords(rewritten_query)),
-            )
-            # partner_info = await get_partner_businesses(keywords)
-
         # Generate answer
         answer = gemini_service.generate_answer(
             query=request.query,  # Use original query for natural response
             context=context_docs,
             chat_history=formatted_history if history else None,
-            partner_info=partner_info,
         )
 
         generation_latency_ms = int((time.time() - generation_start) * 1000)
@@ -257,8 +267,7 @@ async def chat(
                     chunk_id=result["id"],
                     section_header=result.get("section_header"),
                     relevance_score=round(result.get("final_score", result.get("semantic_score", 0)), 4),
-                    drive_link=f"https://docs.google.com/document/d/{result['drive_id']}/edit"
-                    if result.get("drive_id") else None,
+                    drive_link=_build_drive_link(result.get("drive_id")),
                     event_title=result.get("inferred_event_title"),
                 )
                 for result in search_results
@@ -344,7 +353,7 @@ async def chat(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Chat processing failed: {str(e)}",
+            detail="Chat processing failed. Please try again later.",
         )
 
 
