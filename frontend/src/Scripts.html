@@ -85,6 +85,8 @@ function initTabs() {
 }
 
 function activateTab(tabId) {
+  console.log('[Council-AI] activateTab called with:', tabId);
+  
   // 버튼 상태 업데이트
   document.querySelectorAll('.tab-btn').forEach(function(btn) {
     btn.classList.remove('border-google-blue', 'text-google-blue', 'bg-blue-50');
@@ -92,19 +94,26 @@ function activateTab(tabId) {
   });
   
   const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+  console.log('[Council-AI] Found active button:', !!activeBtn);
   if (activeBtn) {
     activeBtn.classList.add('border-google-blue', 'text-google-blue', 'bg-blue-50');
     activeBtn.classList.remove('border-transparent');
   }
   
   // 콘텐츠 표시
-  document.querySelectorAll('.tab-content').forEach(function(content) {
+  const allTabs = document.querySelectorAll('.tab-content');
+  console.log('[Council-AI] Found', allTabs.length, 'tab contents');
+  allTabs.forEach(function(content) {
     content.classList.remove('active');
   });
   
   const activeContent = document.getElementById(tabId + '-tab');
+  console.log('[Council-AI] Found active content:', tabId + '-tab', !!activeContent);
   if (activeContent) {
     activeContent.classList.add('active');
+    console.log('[Council-AI] Tab activated successfully:', tabId);
+  } else {
+    console.error('[Council-AI] Tab content not found:', tabId + '-tab');
   }
   
   State.currentTab = tabId;

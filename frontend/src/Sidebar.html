@@ -11,14 +11,9 @@
   <!-- Marked.js v4.0.0 for Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js"></script>
   
-  <!-- Highlight.js for code syntax highlighting -->
+  <!-- Highlight.js for code syntax highlighting (bundle version) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/sql.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/nicolo-ribaudo/highlight.js-cdn@11.9.0/build/highlight.min.js"></script>
   
   <!-- Google Picker API -->
   <script src="https://apis.google.com/js/api.js"></script>
@@ -142,10 +137,10 @@
     
     /* 탭 트랜지션 */
     .tab-content {
-      display: none;
+      display: none !important;
     }
     .tab-content.active {
-      display: block;
+      display: block !important;
       animation: fadeIn 0.2s ease-out;
     }
     @keyframes fadeIn {
