@@ -206,16 +206,13 @@ if [ "$SKIP_RESET" = false ]; then
 
     cd "$PROJECT_ROOT"
 
-    # Clean local data directories (host side)
-    log_info "Cleaning local data directories..."
-    if [ -d "data/source_documents" ]; then
-        log_info "Removing data/source_documents/*"
-        rm -rf data/source_documents/*
-    fi
-    if [ -d "data/raw" ]; then
-        log_info "Removing data/raw/*"
-        rm -rf data/raw/*
-    fi
+    # Clean data directories using Docker (avoids permission issues)
+    # Docker-created files are owned by root, so we use a container to delete them
+    log_info "Cleaning data directories via Docker..."
+    docker compose run --rm --entrypoint sh backend -c \
+        "rm -rf /app/data/raw/* /app/data/source_documents/* 2>/dev/null; \
+         mkdir -p /app/data/raw /app/data/source_documents" \
+        2>/dev/null || log_warn "Data cleanup skipped (containers may not exist yet)"
 
     # Stop containers and remove volumes (this cleans DB data)
     log_info "Stopping containers and removing volumes..."
@@ -229,9 +226,8 @@ if [ "$SKIP_RESET" = false ]; then
     wait_for_postgres
     wait_for_redis
 
-    # Clean container internal data directories (force rclone to re-download)
-    log_info "Cleaning container data directories..."
-    docker compose exec -T backend rm -rf /app/data/raw/* /app/data/source_documents/* 2>/dev/null || true
+    # Ensure data directories exist in container
+    log_info "Ensuring data directories exist..."
     docker compose exec -T backend mkdir -p /app/data/raw /app/data/source_documents 2>/dev/null || true
 
     # Run migrations (if using alembic)
