@@ -146,15 +146,32 @@ async def run_step_parse(db: AsyncSession) -> int:
     parsed = 0
     for doc in documents:
         try:
-            # Read file content
-            file_path = Path(settings.DATA_RAW_PATH) / doc.drive_name
-            if not file_path.exists():
-                # Try alternate paths
-                file_path = Path("/app/data/source_documents") / doc.drive_name
+            # 1. Get file path from doc_metadata (priority)
+            file_path_str = None
+            if doc.doc_metadata:
+                file_path_str = doc.doc_metadata.get("full_path")
 
+            # 2. Fallback: try constructing path from drive_path
+            if not file_path_str and doc.drive_path:
+                file_path_str = f"/app/data/raw/{doc.drive_path}"
+
+            # 3. Fallback: try source_documents directory
+            if not file_path_str:
+                file_path_str = f"/app/data/source_documents/{doc.drive_name}"
+
+            file_path = Path(file_path_str)
+
+            # Check if file exists
             if not file_path.exists():
-                logger.warning("File not found", doc_id=doc.id, path=str(file_path))
+                logger.warning(
+                    "File not found",
+                    doc_id=doc.id,
+                    path=str(file_path),
+                    drive_name=doc.drive_name,
+                )
                 continue
+
+            logger.debug("Reading file", doc_id=doc.id, path=str(file_path))
 
             with open(file_path, "rb") as f:
                 file_content = f.read()
