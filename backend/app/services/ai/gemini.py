@@ -212,3 +212,195 @@ class GeminiService:
         result = self._parse_json_response(response_text)
 
         return result if isinstance(result, list) else []
+
+    # =========================================================================
+    # Smart Minutes Feature Methods
+    # =========================================================================
+
+    def summarize_agenda_section(
+        self,
+        section_content: str,
+        section_title: str,
+        agenda_type: str = "discuss",
+    ) -> dict[str, Any]:
+        """
+        Summarize a single agenda section from transcript for Smart Minutes.
+        
+        Args:
+            section_content: Content of the agenda section (발언 기록)
+            section_title: Title of the agenda item
+            agenda_type: Type of agenda (report, discuss, decision, other)
+            
+        Returns:
+            Dict with 'summary', 'has_decision', 'action_items'
+        """
+        type_guidance = {
+            "report": "보고 안건입니다. 주요 보고 내용을 간략히 정리하세요.",
+            "discuss": "논의 안건입니다. 결정된 사항이 있으면 명시하고, 없으면 '논의 진행 중'으로 표시하세요.",
+            "decision": "의결 안건입니다. 의결 결과(가결/부결/보류)를 명확히 표시하세요.",
+            "other": "기타 안건입니다. 핵심 내용만 간략히 요약하세요.",
+        }
+        
+        guidance = type_guidance.get(agenda_type, type_guidance["other"])
+        
+        prompt = f"""당신은 학생회 회의록 작성 전문가입니다.
+
+## 안건 정보
+- 제목: {section_title}
+- 유형: {agenda_type} ({guidance})
+
+## 속기 내용
+{section_content}
+
+## 작업
+위 속기 내용을 분석하여 [결과지]에 기입할 내용을 작성하세요.
+
+## 출력 형식 (JSON)
+{{
+    "summary": "결과지에 기입할 요약 (1-3문장, 결론 위주)",
+    "has_decision": true/false,
+    "decisions": ["결정사항1", "결정사항2"],
+    "action_items": [
+        {{"task": "할 일", "assignee": "담당자 또는 null", "deadline": "마감일 또는 null"}}
+    ],
+    "discussion_progress": "결정 없을 시 논의 진전 상황"
+}}
+
+JSON만 출력하세요."""
+
+        response_text = self.generate_text(prompt, temperature=0.2)
+        result = self._parse_json_response(response_text)
+        
+        if not result:
+            return {
+                "summary": "요약 생성 실패",
+                "has_decision": False,
+                "decisions": [],
+                "action_items": [],
+                "discussion_progress": "",
+            }
+        
+        return result
+
+    def extract_todos_from_document(
+        self,
+        content: str,
+        include_context: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Extract todo/action items from a result document for Calendar Sync.
+        
+        Args:
+            content: Full text content of the result document
+            include_context: Whether to include source context
+            
+        Returns:
+            List of todo items with content, assignee, deadline, context
+        """
+        prompt = f"""다음 회의 결과 문서에서 해야 할 일(Todo/Action Item)을 추출해주세요.
+
+## 회의 결과 문서
+{content[:8000]}  # Limit context length
+
+## 추출 기준
+1. 명시적인 할 일: "~예정", "~진행", "~완료 필요"
+2. 담당자 지정: "담당:", "담당자:", 부서명 언급
+3. 마감일 언급: "~까지", "~일", "다음 주"
+
+## 출력 형식 (JSON)
+[
+    {{
+        "content": "할 일 내용",
+        "context": "어느 안건에서 나온 것인지 (예: 문화국 보고)",
+        "assignee": "담당자 또는 담당 부서 (없으면 null)",
+        "suggested_date": "문서에 언급된 날짜 텍스트 (없으면 null)",
+        "parsed_date": "YYYY-MM-DD 형식으로 파싱된 날짜 (파싱 불가 시 null)"
+    }}
+]
+
+JSON 배열만 출력하세요."""
+
+        response_text = self.generate_text(prompt, temperature=0.2)
+        result = self._parse_json_response(response_text)
+        
+        return result if isinstance(result, list) else []
+
+    def generate_handover_content(
+        self,
+        events_data: list[dict[str, Any]],
+        year: int,
+        department: str | None = None,
+        include_insights: bool = True,
+    ) -> str:
+        """
+        Generate comprehensive handover document content.
+        
+        Args:
+            events_data: List of event dictionaries with title, date, summary, etc.
+            year: Target year
+            department: Optional department filter
+            include_insights: Whether to include AI insights
+            
+        Returns:
+            Markdown formatted handover content
+        """
+        dept_text = f"{department} " if department else ""
+        
+        # Format events for prompt
+        events_text = ""
+        for event in events_data[:30]:  # Limit to prevent context overflow
+            events_text += f"""
+### {event.get('title', '제목 없음')}
+- 날짜: {event.get('event_date', '미정')}
+- 담당: {event.get('category', '미정')}
+- 상태: {event.get('status', '미정')}
+- 요약: {event.get('summary', '(요약 없음)')}
+"""
+        
+        insights_instruction = """
+## 7. 차기 학생회를 위한 제언
+- 전체 사업 운영에 대한 인사이트
+- 개선이 필요한 부분
+- 유지하면 좋을 것들
+""" if include_insights else ""
+        
+        prompt = f"""당신은 학생회 인수인계서 작성 전문가입니다.
+
+## 작성 대상
+- 연도: {year}년
+- 대상: {dept_text}학생회
+
+## 행사/사업 데이터
+{events_text}
+
+## 인수인계서 구조
+다음 구조에 맞춰 Markdown 형식의 인수인계서를 작성하세요:
+
+# 제38대 {dept_text}학생회 인수인계서 ({year})
+
+## 1. 개요
+- {year}년 학생회 활동 전반에 대한 소개
+
+## 2. 조직 구성
+- 주요 보직 및 담당 업무
+
+## 3. 주요 사업 총괄
+- 연간 사업 타임라인
+- 주요 성과
+
+## 4. 사업별 상세 기록
+(각 행사에 대한 기획 의도, 진행 과정, 결과, 피드백)
+
+## 5. 예산 운용 개요
+- 주요 지출 항목
+- 예산 관리 팁
+
+## 6. 주요 결정사항 아카이브
+- 중요한 의사결정 기록
+{insights_instruction}
+
+위 데이터를 바탕으로 실질적으로 도움이 되는 인수인계서를 작성하세요.
+없는 정보는 추측하지 말고 "(정보 없음)" 또는 "(추가 필요)"로 표시하세요.
+"""
+
+        return self.generate_text(prompt, temperature=0.4, max_tokens=8000)
