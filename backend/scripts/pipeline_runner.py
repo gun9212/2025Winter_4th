@@ -230,8 +230,8 @@ async def run_step_preprocess(db: AsyncSession) -> int:
                 is_meeting_document=is_meeting,
             )
 
-            # Update document
-            doc.preprocessed_content = preprocessed.get("content", doc.parsed_content)
+            # Update document (PreprocessingResult dataclass - use dot notation)
+            doc.preprocessed_content = preprocessed.processed_content or doc.parsed_content
             doc.status = DocumentStatus.PREPROCESSING
 
             processed += 1
