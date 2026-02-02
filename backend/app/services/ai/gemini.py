@@ -22,7 +22,7 @@ class GeminiService:
 
         # 🚀 [Upgrade] 최신 Gemini 2.0 모델 사용
         # 만약 에러 발생 시 "gemini-1.5-flash-001"로 변경하세요.
-        self.MODEL_NAME = "gemini-1.5-flash"
+        self.MODEL_NAME = "gemini-1.5-flash-001"
 
     @property
     def model(self):
