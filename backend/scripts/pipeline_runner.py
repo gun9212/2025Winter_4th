@@ -41,7 +41,8 @@ from app.pipeline.step_07_embed import EmbeddingService
 logger = structlog.get_logger()
 
 # Semaphore for controlling concurrent document processing
-MAX_CONCURRENT = 5
+# Reduced to 2 to avoid API rate limits (429 Too Many Requests)
+MAX_CONCURRENT = 2
 
 
 async def run_step_ingest(db: AsyncSession) -> int:
@@ -454,8 +455,8 @@ async def main():
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=5,
-        help="Max concurrent document processing (default: 5)",
+        default=2,
+        help="Max concurrent document processing (default: 2)",
     )
     args = parser.parse_args()
 
