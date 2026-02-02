@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import async_session_factory as AsyncSessionLocal
 from app.models.document import Document, DocumentStatus
 from app.pipeline.step_01_ingest import IngestionService
 from app.pipeline.step_02_classify import ClassificationService
