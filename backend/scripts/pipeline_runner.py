@@ -41,8 +41,11 @@ from app.pipeline.step_07_embed import EmbeddingService
 logger = structlog.get_logger()
 
 # Semaphore for controlling concurrent document processing
-# Reduced to 2 to avoid API rate limits (429 Too Many Requests)
-MAX_CONCURRENT = 2
+# Set to 1 for strict sequential processing to avoid API rate limits (429)
+MAX_CONCURRENT = 1
+
+# Cooldown between API calls (seconds)
+API_COOLDOWN = 3
 
 
 async def run_step_ingest(db: AsyncSession) -> int:
@@ -115,6 +118,9 @@ async def run_step_classify(db: AsyncSession) -> int:
                 doc.status = DocumentStatus.FAILED
                 doc.error_message = str(e)
                 return False
+            finally:
+                # Cooldown to avoid API rate limits
+                await asyncio.sleep(API_COOLDOWN)
 
     results = await asyncio.gather(*[classify_one(doc) for doc in documents])
     await db.commit()
@@ -177,6 +183,9 @@ async def run_step_parse(db: AsyncSession) -> int:
                 doc.status = DocumentStatus.FAILED
                 doc.error_message = str(e)
                 return False
+            finally:
+                # Cooldown to avoid API rate limits
+                await asyncio.sleep(API_COOLDOWN)
 
     results = await asyncio.gather(*[parse_one(doc) for doc in documents])
     await db.commit()
@@ -226,6 +235,9 @@ async def run_step_preprocess(db: AsyncSession) -> int:
                 doc.status = DocumentStatus.FAILED
                 doc.error_message = str(e)
                 return False
+            finally:
+                # Cooldown to avoid API rate limits
+                await asyncio.sleep(API_COOLDOWN)
 
     results = await asyncio.gather(*[preprocess_one(doc) for doc in documents])
     await db.commit()
@@ -455,8 +467,8 @@ async def main():
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=2,
-        help="Max concurrent document processing (default: 2)",
+        default=1,
+        help="Max concurrent document processing (default: 1)",
     )
     args = parser.parse_args()
 
