@@ -105,12 +105,13 @@ async def run_step_classify(db: AsyncSession) -> int:
                 folder_path=doc.drive_path or "",
             )
 
-            # Update document with classification results
-            doc.doc_category = classification.get("category", DocumentCategory.OTHER_DOCUMENT)
-            doc.meeting_subtype = classification.get("meeting_subtype")
-            doc.standardized_name = classification.get("standardized_name")
-            doc.year = classification.get("year")
-            doc.department = classification.get("department")
+            # Update document with classification results (ClassificationResult dataclass)
+            doc.doc_type = classification.doc_type
+            doc.doc_category = classification.doc_category
+            doc.meeting_subtype = classification.meeting_subtype
+            doc.standardized_name = classification.standardized_name
+            doc.year = classification.year
+            doc.department = classification.department
             doc.status = DocumentStatus.CLASSIFYING
 
             classified += 1
