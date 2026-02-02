@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pipeline Runner - Execute data processing pipeline steps with parallel processing.
+"""Pipeline Runner - Execute data processing pipeline steps with step-specific settings.
 
 Usage:
     python -m scripts.pipeline_runner --step all
@@ -16,6 +16,7 @@ Usage:
 import argparse
 import asyncio
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
@@ -40,12 +41,23 @@ from app.pipeline.step_07_embed import EmbeddingService
 
 logger = structlog.get_logger()
 
-# Semaphore for controlling concurrent document processing
-# Set to 1 for strict sequential processing to avoid API rate limits (429)
-MAX_CONCURRENT = 1
 
-# Cooldown between API calls (seconds)
-API_COOLDOWN = 3
+@dataclass
+class StepConfig:
+    """Configuration for each pipeline step."""
+    concurrency: int
+    cooldown: float  # seconds
+
+
+# Step-specific configurations
+STEP_CONFIGS = {
+    "classify": StepConfig(concurrency=10, cooldown=0.5),   # Gemini API - fast
+    "parse": StepConfig(concurrency=1, cooldown=3.0),       # Upstage API - strict rate limit
+    "preprocess": StepConfig(concurrency=5, cooldown=0.5),  # Gemini API - moderate
+    "chunk": StepConfig(concurrency=1, cooldown=0),         # Local CPU - no API
+    "enrich": StepConfig(concurrency=5, cooldown=0.5),      # Gemini API - moderate
+    "embed": StepConfig(concurrency=2, cooldown=1.0),       # Vertex AI - moderate
+}
 
 
 async def run_step_ingest(db: AsyncSession) -> int:
@@ -81,11 +93,14 @@ async def run_step_ingest(db: AsyncSession) -> int:
 
 
 async def run_step_classify(db: AsyncSession) -> int:
-    """Step 2: Classify documents with parallel processing."""
+    """Step 2: Classify documents (Gemini API - fast)."""
     logger.info("Step 2: Starting classification...")
 
+    config = STEP_CONFIGS["classify"]
     service = ClassificationService()
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    semaphore = asyncio.Semaphore(config.concurrency)
+
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
 
     result = await db.execute(
         select(Document).where(Document.status == DocumentStatus.PENDING)
@@ -103,7 +118,6 @@ async def run_step_classify(db: AsyncSession) -> int:
                     filename=doc.drive_name,
                     folder_path=doc.drive_path or "",
                 )
-                # ClassificationResult dataclass - use dot notation
                 doc.doc_type = classification.doc_type
                 doc.doc_category = classification.doc_category
                 doc.meeting_subtype = classification.meeting_subtype
@@ -119,8 +133,8 @@ async def run_step_classify(db: AsyncSession) -> int:
                 doc.error_message = str(e)
                 return False
             finally:
-                # Cooldown to avoid API rate limits
-                await asyncio.sleep(API_COOLDOWN)
+                if config.cooldown > 0:
+                    await asyncio.sleep(config.cooldown)
 
     results = await asyncio.gather(*[classify_one(doc) for doc in documents])
     await db.commit()
@@ -131,11 +145,14 @@ async def run_step_classify(db: AsyncSession) -> int:
 
 
 async def run_step_parse(db: AsyncSession) -> int:
-    """Step 3: Parse documents with parallel processing."""
+    """Step 3: Parse documents (Upstage API - strict rate limit)."""
     logger.info("Step 3: Starting parsing...")
 
+    config = STEP_CONFIGS["parse"]
     service = ParsingService()
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    semaphore = asyncio.Semaphore(config.concurrency)
+
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
 
     result = await db.execute(
         select(Document).where(Document.status == DocumentStatus.CLASSIFYING)
@@ -149,7 +166,6 @@ async def run_step_parse(db: AsyncSession) -> int:
     async def parse_one(doc: Document) -> bool:
         async with semaphore:
             try:
-                # Get file path from doc_metadata or construct it
                 file_path_str = None
                 if doc.doc_metadata:
                     file_path_str = doc.doc_metadata.get("full_path")
@@ -172,7 +188,6 @@ async def run_step_parse(db: AsyncSession) -> int:
                     filename=doc.drive_name,
                 )
 
-                # ParsingResult dataclass - use dot notation
                 doc.parsed_content = parsed_result.markdown_content or parsed_result.text_content
                 doc.status = DocumentStatus.PARSING
                 logger.debug("Document parsed", doc_id=doc.id)
@@ -184,8 +199,8 @@ async def run_step_parse(db: AsyncSession) -> int:
                 doc.error_message = str(e)
                 return False
             finally:
-                # Cooldown to avoid API rate limits
-                await asyncio.sleep(API_COOLDOWN)
+                if config.cooldown > 0:
+                    await asyncio.sleep(config.cooldown)
 
     results = await asyncio.gather(*[parse_one(doc) for doc in documents])
     await db.commit()
@@ -196,11 +211,14 @@ async def run_step_parse(db: AsyncSession) -> int:
 
 
 async def run_step_preprocess(db: AsyncSession) -> int:
-    """Step 4: Preprocess parsed content with parallel processing."""
+    """Step 4: Preprocess parsed content (Gemini API - moderate)."""
     logger.info("Step 4: Starting preprocessing...")
 
+    config = STEP_CONFIGS["preprocess"]
     service = PreprocessingService()
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    semaphore = asyncio.Semaphore(config.concurrency)
+
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
 
     result = await db.execute(
         select(Document).where(Document.status == DocumentStatus.PARSING)
@@ -224,7 +242,6 @@ async def run_step_preprocess(db: AsyncSession) -> int:
                     is_meeting_document=is_meeting,
                 )
 
-                # PreprocessingResult dataclass - use dot notation
                 doc.preprocessed_content = preprocessed.processed_content or doc.parsed_content
                 doc.status = DocumentStatus.PREPROCESSING
                 logger.debug("Document preprocessed", doc_id=doc.id)
@@ -236,8 +253,8 @@ async def run_step_preprocess(db: AsyncSession) -> int:
                 doc.error_message = str(e)
                 return False
             finally:
-                # Cooldown to avoid API rate limits
-                await asyncio.sleep(API_COOLDOWN)
+                if config.cooldown > 0:
+                    await asyncio.sleep(config.cooldown)
 
     results = await asyncio.gather(*[preprocess_one(doc) for doc in documents])
     await db.commit()
@@ -248,10 +265,13 @@ async def run_step_preprocess(db: AsyncSession) -> int:
 
 
 async def run_step_chunk(db: AsyncSession) -> int:
-    """Step 5: Chunk documents (sync operation, sequential)."""
+    """Step 5: Chunk documents (Local CPU - no API)."""
     logger.info("Step 5: Starting chunking...")
 
+    config = STEP_CONFIGS["chunk"]
     service = ChunkingService()
+
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
 
     result = await db.execute(
         select(Document).where(Document.status == DocumentStatus.PREPROCESSING)
@@ -277,13 +297,11 @@ async def run_step_chunk(db: AsyncSession) -> int:
                 "department": doc.department,
             }
 
-            # ChunkingService.chunk_document returns list[ChunkData]
             chunk_data_list = service.chunk_document(
                 content=content,
                 document_metadata=metadata,
             )
 
-            # ChunkData dataclass - use dot notation
             for chunk_data in chunk_data_list:
                 chunk = DocumentChunk(
                     document_id=doc.id,
@@ -313,11 +331,13 @@ async def run_step_chunk(db: AsyncSession) -> int:
 
 
 async def run_step_enrich(db: AsyncSession) -> int:
-    """Step 6: Enrich metadata."""
+    """Step 6: Enrich metadata (Gemini API - moderate)."""
     logger.info("Step 6: Starting metadata enrichment...")
 
-    # MetadataEnrichmentService takes db in __init__
+    config = STEP_CONFIGS["enrich"]
     service = MetadataEnrichmentService(db)
+
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
 
     result = await db.execute(
         select(Document).where(Document.status == DocumentStatus.CHUNKING)
@@ -331,7 +351,6 @@ async def run_step_enrich(db: AsyncSession) -> int:
     enriched = 0
     for doc in documents:
         try:
-            # enrich_document modifies document in place, returns EnrichmentResult
             enrich_result = await service.enrich_document(doc)
             doc.status = DocumentStatus.EMBEDDING
             enriched += 1
@@ -340,6 +359,8 @@ async def run_step_enrich(db: AsyncSession) -> int:
                 doc_id=doc.id,
                 chunks_enriched=enrich_result.chunks_enriched if enrich_result else 0,
             )
+            if config.cooldown > 0:
+                await asyncio.sleep(config.cooldown)
         except Exception as e:
             logger.error("Enrichment failed", doc_id=doc.id, error=str(e))
             doc.status = DocumentStatus.FAILED
@@ -351,13 +372,14 @@ async def run_step_enrich(db: AsyncSession) -> int:
 
 
 async def run_step_embed(db: AsyncSession) -> int:
-    """Step 7: Generate embeddings."""
+    """Step 7: Generate embeddings (Vertex AI - moderate)."""
     logger.info("Step 7: Starting embedding generation...")
 
-    # EmbeddingService takes db in __init__
+    config = STEP_CONFIGS["embed"]
     service = EmbeddingService(db)
 
-    # Ensure HNSW index exists
+    logger.info(f"Config: concurrency={config.concurrency}, cooldown={config.cooldown}s")
+
     await service.ensure_hnsw_index()
 
     result = await db.execute(
@@ -378,7 +400,6 @@ async def run_step_embed(db: AsyncSession) -> int:
             chunks = list(chunk_result.scalars().all())
 
             if chunks:
-                # EmbeddingResult dataclass - use dot notation
                 embed_result = await service.embed_chunks(chunks)
                 total_embedded += embed_result.chunks_embedded
                 logger.debug(
@@ -389,6 +410,9 @@ async def run_step_embed(db: AsyncSession) -> int:
                 )
 
             doc.status = DocumentStatus.COMPLETED
+
+            if config.cooldown > 0:
+                await asyncio.sleep(config.cooldown)
 
         except Exception as e:
             logger.error("Embedding failed", doc_id=doc.id, error=str(e))
@@ -430,21 +454,18 @@ async def get_pipeline_stats(db: AsyncSession) -> dict:
     """Get current pipeline statistics."""
     stats = {}
 
-    # Count documents by status
     for status in DocumentStatus:
         result = await db.execute(
             select(Document).where(Document.status == status)
         )
         stats[status.value] = len(result.scalars().all())
 
-    # Count total chunks
     try:
         result = await db.execute(text("SELECT COUNT(*) FROM document_chunks"))
         stats["total_chunks"] = result.scalar() or 0
     except Exception:
         stats["total_chunks"] = 0
 
-    # Count embedded chunks
     try:
         result = await db.execute(
             text("SELECT COUNT(*) FROM document_chunks WHERE embedding IS NOT NULL")
@@ -464,16 +485,7 @@ async def main():
         default="all",
         help="Which step to run (default: all)",
     )
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=1,
-        help="Max concurrent document processing (default: 1)",
-    )
     args = parser.parse_args()
-
-    global MAX_CONCURRENT
-    MAX_CONCURRENT = args.concurrency
 
     step_map = {
         "ingest": run_step_ingest,
@@ -484,6 +496,12 @@ async def main():
         "enrich": run_step_enrich,
         "embed": run_step_embed,
     }
+
+    # Log step configs at startup
+    logger.info("Step configurations:", configs={
+        k: {"concurrency": v.concurrency, "cooldown": v.cooldown}
+        for k, v in STEP_CONFIGS.items()
+    })
 
     async with AsyncSessionLocal() as db:
         if args.step == "all":
