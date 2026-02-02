@@ -72,10 +72,13 @@ function loadUserEmail() {
 // ============================================
 function initTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
+  console.log('[Council-AI] initTabs - found', tabBtns.length, 'tab buttons');
   
   tabBtns.forEach(function(btn) {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
       const tabId = this.dataset.tab;
+      console.log('[Council-AI] Tab clicked:', tabId);
       activateTab(tabId);
     });
   });
@@ -253,15 +256,23 @@ function sendChatMessage() {
           sources: result.data.sources 
         });
       } else {
-        addChatMessage('assistant', '⚠️ 오류: ' + result.error);
+        // 에러 객체를 문자열로 변환
+        let errorMsg = result.error;
+        if (typeof errorMsg === 'object') {
+          errorMsg = errorMsg.detail || errorMsg.message || JSON.stringify(errorMsg);
+        }
+        addChatMessage('assistant', '⚠️ 오류: ' + errorMsg);
         showToast('API 호출 실패', 'error');
+        console.error('[Council-AI] Chat error:', result);
       }
     })
     .withFailureHandler(function(error) {
       removeTypingIndicator(loadingId);
       sendBtn.disabled = false;
-      addChatMessage('assistant', '⚠️ 오류: ' + error.message);
+      let errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : error);
+      addChatMessage('assistant', '⚠️ 오류: ' + errorMsg);
       showToast('서버 오류', 'error');
+      console.error('[Council-AI] Chat failure:', error);
     })
     .apiChat(query, State.chatSessionId, 4, { max_results: 5, include_sources: true });
 }

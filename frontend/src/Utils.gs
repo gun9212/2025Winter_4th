@@ -96,9 +96,12 @@ function callAPI(endpoint, method, payload, options) {
  * @returns {Object} 채팅 응답
  */
 function apiChat(query, sessionId, userLevel, options) {
+  // sessionId가 없으면 새로 생성
+  const finalSessionId = sessionId || generateUUID();
+  
   const payload = {
     query: query,
-    session_id: sessionId || null,
+    session_id: finalSessionId,
     user_level: userLevel || 4,
     options: options || {
       max_results: 5,
