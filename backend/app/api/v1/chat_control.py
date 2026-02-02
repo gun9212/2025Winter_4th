@@ -331,7 +331,7 @@ async def chat(
                 latency_ms=total_latency_ms,
                 retrieval_latency_ms=retrieval_latency_ms,
                 generation_latency_ms=generation_latency_ms,
-                model_used="gemini-1.5-flash",
+                model_used="gemini-2.0-flash-exp",
             ),
         )
 
