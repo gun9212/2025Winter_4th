@@ -1,9 +1,10 @@
 services:
+  # 1. Redis 서비스
   redis:
     image: redis:7-alpine
     container_name: council-ai-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379" # .env에 REDIS_PORT가 없으면 기본값 6379 사용
     volumes:
       - redis_data:/data
     healthcheck:
@@ -12,13 +13,34 @@ services:
       timeout: 5s
       retries: 5
 
+  # 2. DB 서비스 (추가됨: Full Cycle Test용)
+  db:
+    image: pgvector/pgvector:pg16 # RAG용 벡터 DB 이미지
+    container_name: council-ai-db
+    environment:
+      # 👇 모든 비밀값은 .env에서 가져옵니다
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # 헬스체크에서도 환경변수를 사용해 접속 테스트
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Backend 서비스
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: council-ai-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
       - ./credentials:/app/credentials:ro
@@ -27,9 +49,8 @@ services:
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
     environment:
-      # 원격 DB 사용 (.env의 DATABASE_URL)
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
@@ -37,16 +58,18 @@ services:
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
       - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
       - DEBUG=${DEBUG:-true}
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+      - SECRET_KEY=${SECRET_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
-    # 👇 [중요] 리눅스에서 호스트(Native DB)를 찾기 위한 설정
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+      db: # DB가 준비될 때까지 대기
+        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # 4. Celery Worker 서비스
   celery_worker:
     build:
       context: ./backend
@@ -61,7 +84,7 @@ services:
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
@@ -69,15 +92,17 @@ services:
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
       - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
       - DEBUG=${DEBUG:-true}
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+      - SECRET_KEY=${SECRET_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
-    # 👇 [중요] 워커도 DB에 접속해야 하므로 추가
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+      db: # DB가 준비될 때까지 대기
+        condition: service_healthy
     command: celery -A app.tasks.celery_app worker --loglevel=info
 
 volumes:
   redis_data:
+  postgres_data: # DB 데이터 영구 저장소
