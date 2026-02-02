@@ -67,21 +67,21 @@ log_error() {
 
 wait_for_postgres() {
     log_info "Waiting for PostgreSQL to be ready..."
-    local max_attempts=30
-    local attempt=1
 
-    while [ $attempt -le $max_attempts ]; do
-        if docker compose exec -T postgres pg_isready -U council -d council_ai > /dev/null 2>&1; then
+    for i in {1..30}; do
+        if docker compose exec -T db pg_isready -U ${POSTGRES_USER:-myuser} > /dev/null 2>&1; then
+            echo ""
             log_info "PostgreSQL is ready!"
             return 0
         fi
         echo -n "."
         sleep 1
-        attempt=$((attempt + 1))
+        if [ "$i" -eq 30 ]; then
+            echo ""
+            log_error "PostgreSQL failed to start after 30 seconds"
+            exit 1
+        fi
     done
-
-    log_error "PostgreSQL failed to start after ${max_attempts} seconds"
-    return 1
 }
 
 wait_for_redis() {
