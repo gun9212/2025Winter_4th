@@ -3,21 +3,60 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.redis import RedisClient
+
+logger = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan events."""
+    """
+    Application lifespan events.
+
+    Startup:
+    - Initialize database connection pool
+    - Initialize Redis connection pool
+
+    Shutdown:
+    - Close Redis connections gracefully
+    """
     # Startup
+    logger.info("Starting Council-AI application...")
+
+    # Initialize database
     await init_db()
+    logger.info("Database initialized")
+
+    # Initialize Redis
+    try:
+        await RedisClient.initialize()
+        logger.info("Redis initialized")
+    except Exception as e:
+        logger.warning(
+            "Redis initialization failed - chat history will not work",
+            error=str(e),
+        )
+
     yield
+
     # Shutdown
+    logger.info("Shutting down Council-AI application...")
+
+    # Close Redis connections
+    try:
+        await RedisClient.close()
+        logger.info("Redis connections closed")
+    except Exception as e:
+        logger.error("Error closing Redis", error=str(e))
+
+    logger.info("Shutdown complete")
 
 
 app = FastAPI(
@@ -44,9 +83,18 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
+async def health_check() -> dict[str, str | dict]:
+    """
+    Health check endpoint.
+
+    Returns application and dependency health status.
+    """
+    redis_health = await RedisClient.health_check()
+
+    return {
+        "status": "healthy",
+        "dependencies": redis_health,
+    }
 
 
 @app.get("/")

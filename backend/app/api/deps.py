@@ -4,14 +4,19 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.core.security import google_auth
 
 # Database session dependency
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+# Redis client dependency
+RedisClient = Annotated[Redis, Depends(get_redis)]
 
 # API Key header
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

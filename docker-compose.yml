@@ -39,6 +39,9 @@ services:
       - DEBUG=${DEBUG:-true}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
+    # 👇 [중요] 리눅스에서 호스트(Native DB)를 찾기 위한 설정
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -57,7 +60,6 @@ services:
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
     environment:
-      # 원격 DB 사용 (.env의 DATABASE_URL)
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
@@ -69,6 +71,9 @@ services:
       - DEBUG=${DEBUG:-true}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google_key.json
+    # 👇 [중요] 워커도 DB에 접속해야 하므로 추가
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy

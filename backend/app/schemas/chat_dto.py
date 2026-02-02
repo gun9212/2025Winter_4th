@@ -131,7 +131,7 @@ class ChatHistoryItem(BaseModel):
 
     role: str = Field(..., description="'user' or 'assistant'")
     content: str = Field(..., description="Message content")
-    timestamp: datetime = Field(
-        default_factory=datetime.now,
-        description="Message timestamp",
+    timestamp: str | datetime = Field(
+        default_factory=lambda: datetime.now().isoformat(),
+        description="Message timestamp (ISO format string or datetime)",
     )

@@ -147,6 +147,7 @@ class GeminiService:
         self,
         query: str,
         context: list[str],
+        chat_history: str | None = None,
         partner_info: dict | None = None,
     ) -> str:
         """
@@ -155,27 +156,49 @@ class GeminiService:
         Args:
             query: User's question.
             context: List of relevant document chunks.
+            chat_history: Optional formatted conversation history.
             partner_info: Optional partner business info.
 
         Returns:
             Generated answer.
         """
-        context_text = "\n\n---\n\n".join(context)
+        context_text = "\n\n---\n\n".join(context) if context else "(검색된 문서 없음)"
+
+        history_section = ""
+        if chat_history and chat_history != "(이전 대화 없음)":
+            history_section = f"""
+## 이전 대화
+{chat_history}
+"""
 
         partner_section = ""
         if partner_info:
-            partner_section = f"\n\n제휴 업체 정보:\n{partner_info}"
+            partner_section = f"""
+## 제휴 업체 정보
+{partner_info}
+"""
 
-        prompt = f"""다음 컨텍스트를 기반으로 질문에 답변해주세요.
-컨텍스트에 없는 정보는 답변하지 마세요.
+        prompt = f"""당신은 학생회 업무를 돕는 AI 비서 'Council-AI'입니다.
 
-컨텍스트:
+## 역할
+- 제공된 문서를 바탕으로 정확하고 친절하게 답변합니다.
+- 문서에 없는 내용은 추측하지 않고, "해당 정보를 찾지 못했습니다"라고 답합니다.
+- 답변 시 관련 정보의 출처를 자연스럽게 언급합니다.
+
+## 검색된 문서
 {context_text}
-{partner_section}
+{partner_section}{history_section}
+## 사용자 질문
+{query}
 
-질문: {query}
+## 답변 가이드라인
+1. 핵심 정보를 먼저 제공하고, 세부 사항은 이후에 설명합니다.
+2. 표나 목록이 적합한 경우 마크다운 형식을 사용합니다.
+3. 관련 제휴 업체 정보가 있다면 함께 안내합니다.
+4. 불확실한 정보는 "~로 보입니다" 등 완곡하게 표현합니다.
+5. 이전 대화가 있다면 맥락을 고려하여 답변합니다.
 
-답변:"""
+## 답변:"""
 
         return self.generate_text(prompt, temperature=0.3)
 
