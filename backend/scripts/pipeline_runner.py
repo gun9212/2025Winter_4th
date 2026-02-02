@@ -182,8 +182,9 @@ async def run_step_parse(db: AsyncSession) -> int:
                 filename=doc.drive_name,
             )
 
-            # Update document
-            doc.parsed_content = parsed_result.get("content", "")
+            # Update document (ParsingResult dataclass - use dot notation)
+            # Prefer markdown_content for RAG, fallback to text_content
+            doc.parsed_content = parsed_result.markdown_content or parsed_result.text_content
             doc.status = DocumentStatus.PARSING
 
             parsed += 1
