@@ -183,9 +183,7 @@ class IngestionService:
             ),
             # Mac/Windows compatibility: normalize Unicode filenames
             "--drive-encoding", "None",
-            # Export Google Workspace files to processable formats
-            "--drive-export-formats", "docx,xlsx,pptx" if export_google_docs else "",
-            # Skip Google Forms (will be handled separately as References)
+            # Skip Google Drive shortcuts
             "--drive-skip-shortcuts",
             # Progress and logging
             "--progress",
@@ -193,8 +191,13 @@ class IngestionService:
             "--stats", "1s",
         ]
 
-        # Remove empty arguments
-        cmd = [arg for arg in cmd if arg]
+        # Export Google Workspace files to processable formats
+        if export_google_docs:
+            cmd.extend(["--drive-export-formats", RCLONE_EXPORT_FORMATS])
+
+        # Add exclude patterns (skip Google Forms etc.)
+        for pattern in RCLONE_EXCLUDE_PATTERNS:
+            cmd.extend(["--exclude", pattern])
 
         logger.info("Starting rclone sync", folder_id=drive_folder_id, dest=dest)
 
@@ -345,11 +348,13 @@ class IngestionService:
     def scan_local_files(self) -> list[dict[str, Any]]:
         """
         Scan local data directory for synced files recursively.
-        
+
         Returns:
             List of file metadata dictionaries with doc_type mapping.
         """
         files = []
+        skipped_files: list[str] = []
+        skipped_extensions: dict[str, int] = {}
 
         logger.info(
             "[SCAN] Starting recursive file scan",
@@ -364,15 +369,18 @@ class IngestionService:
         for file_path in self.work_dir.rglob("*"):
             if not file_path.is_file():
                 continue
-                
+
             extension = file_path.suffix.lower()
             relative_path = str(file_path.relative_to(self.work_dir))
 
             if extension not in SUPPORTED_EXTENSIONS:
-                logger.debug(
+                skipped_files.append(relative_path)
+                ext_key = extension if extension else "(no extension)"
+                skipped_extensions[ext_key] = skipped_extensions.get(ext_key, 0) + 1
+                logger.warning(
                     "[SCAN] Skipping unsupported file",
                     path=relative_path,
-                    extension=extension,
+                    extension=ext_key,
                 )
                 continue
 
@@ -388,9 +396,19 @@ class IngestionService:
             }
             files.append(file_info)
 
+        # Log summary of skipped files
+        if skipped_files:
+            logger.warning(
+                "[SCAN] Files skipped due to unsupported extension",
+                skipped_count=len(skipped_files),
+                skipped_by_extension=skipped_extensions,
+                skipped_files=skipped_files,
+            )
+
         logger.info(
             "[SCAN] File scan completed",
             total_files=len(files),
+            skipped_files=len(skipped_files),
         )
 
         return files

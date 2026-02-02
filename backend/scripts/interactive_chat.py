@@ -119,7 +119,7 @@ def send_chat_request(
     api_key: str,
     query: str,
     session_id: str,
-    user_level: int = 4,
+    user_level: int = 1,
 ) -> dict | None:
     """Send chat request to API."""
     headers = {
