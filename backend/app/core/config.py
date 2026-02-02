@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     # Google Cloud Platform
     GOOGLE_CLOUD_PROJECT: str = ""
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""  # Path to service account key JSON
     GCS_BUCKET_NAME: str = "council-data"
     
     # Vertex AI Configuration
@@ -70,7 +71,7 @@ class Settings(BaseSettings):
 
     # AI Services
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"  # Updated to Gemini 2.0 Flash
+    GEMINI_MODEL: str = "gemini-flash-latest"  # Stable model (롤백 후 안정화)
     UPSTAGE_API_KEY: str = ""
 
     # Google Drive Ingestion (from teammate's ingestion.py)
