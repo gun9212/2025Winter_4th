@@ -241,6 +241,9 @@ class ChunkingService:
         """
         Chunk document with special handling for tables.
         
+        ⚠️ DEPRECATED: Step 3에서 테이블이 이미 Markdown으로 변환되어 본문에 
+        포함되므로, 이 메서드 대신 chunk_document()를 사용하세요.
+        
         Tables are kept as separate chunks to preserve structure.
         
         Args:
@@ -251,6 +254,11 @@ class ChunkingService:
         Returns:
             List of ChunkData including table chunks
         """
+        logger.warning(
+            "chunk_with_tables is DEPRECATED. "
+            "Tables are now embedded in Markdown content by Step 3. "
+            "Use chunk_document() instead."
+        )
         # First, chunk the text content
         text_chunks = self.chunk_document(content, document_metadata)
         

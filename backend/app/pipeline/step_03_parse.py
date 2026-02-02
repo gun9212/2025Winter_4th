@@ -1,13 +1,17 @@
 """Step 3: Parsing - Parse documents using Upstage API with Gemini Vision enhancement.
 
 This module handles document parsing:
-1. Upstage Document Parse API for HTML/Markdown conversion
+1. Upstage Document Parse API for Markdown conversion
 2. Coordinate-based image cropping from PDF pages
 3. Gemini 2.0 Flash Vision for table and image captioning
+4. Caption injection into Markdown content
+
+Output: Markdown content with captions injected for images/tables.
 """
 
 import base64
 import io
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -124,7 +128,7 @@ class ParsingService:
         self,
         file_content: bytes,
         filename: str,
-        output_format: str = "html",
+        output_format: str = "markdown",  # Changed: Markdown 출력 중심
         extract_images: bool = True,
         caption_images: bool = True,
     ) -> ParsingResult:
@@ -184,9 +188,10 @@ class ParsingService:
                 })
 
         # Step 3: Caption images and tables with Gemini if requested
+        # Now works with Markdown content instead of HTML
         if caption_images and (images or tables):
-            html_content = await self._enhance_with_captions(
-                html_content,
+            markdown_content = await self._enhance_with_captions_markdown(
+                markdown_content,
                 file_content,
                 filename,
                 images,
@@ -471,10 +476,102 @@ class ParsingService:
         
         return html_content
 
+    # ========== NEW: Markdown-based caption injection ==========
+
+    async def _enhance_with_captions_markdown(
+        self,
+        markdown_content: str,
+        original_file: bytes,
+        filename: str,
+        images: list[dict],
+        tables: list[dict],
+    ) -> str:
+        """
+        Enhance Markdown content by injecting Gemini-generated captions.
+        """
+        orphan_captions: list[tuple[str, str, int | None]] = []
+
+        for i, img in enumerate(images):
+            try:
+                caption = await self._caption_image(img, original_file, filename, is_table=False)
+                if caption:
+                    result = self._inject_caption_markdown(markdown_content, caption, "image", i)
+                    if result["injected"]:
+                        markdown_content = result["content"]
+                    else:
+                        orphan_captions.append((caption, "image", img.get("page")))
+            except Exception as e:
+                logger.warning("Image captioning failed", image_index=i, error=str(e))
+
+        for i, table in enumerate(tables):
+            try:
+                caption = await self._caption_image(table, original_file, filename, is_table=True)
+                if caption:
+                    result = self._inject_caption_markdown(markdown_content, caption, "table", i)
+                    if result["injected"]:
+                        markdown_content = result["content"]
+                    else:
+                        orphan_captions.append((caption, "table", table.get("page")))
+            except Exception as e:
+                logger.warning("Table captioning failed", table_index=i, error=str(e))
+
+        if orphan_captions:
+            markdown_content = self._append_orphan_captions(markdown_content, orphan_captions)
+
+        return markdown_content
+
+    def _inject_caption_markdown(
+        self,
+        content: str,
+        caption: str,
+        element_type: str,
+        element_index: int,
+    ) -> dict[str, Any]:
+        """Inject caption into Markdown using ![...](...) pattern matching."""
+        if element_type == "table":
+            formatted_caption = f"\n\n{caption}\n\n"
+        else:
+            formatted_caption = f"\n\n> **[이미지 설명]** {caption}\n\n"
+
+        image_pattern = r'!\[[^\]]*\]\([^)]*\)'
+        matches = list(re.finditer(image_pattern, content))
+        
+        if matches and element_index < len(matches):
+            match = matches[element_index]
+            new_content = content[:match.end()] + formatted_caption + content[match.end():]
+            return {"content": new_content, "injected": True, "method": "pattern_match"}
+
+        placeholder_pattern = r'!\[image\]\(/image/placeholder\)'
+        placeholder_matches = list(re.finditer(placeholder_pattern, content))
+        
+        if placeholder_matches and element_index < len(placeholder_matches):
+            match = placeholder_matches[element_index]
+            new_content = content[:match.end()] + formatted_caption + content[match.end():]
+            return {"content": new_content, "injected": True, "method": "placeholder_match"}
+
+        return {"content": content, "injected": False, "method": None}
+
+    def _append_orphan_captions(
+        self,
+        content: str,
+        orphan_captions: list[tuple[str, str, int | None]],
+    ) -> str:
+        """Append orphan captions to document end."""
+        if not orphan_captions:
+            return content
+        appendix = "\n\n---\n\n## 📎 추가 자료 설명\n\n"
+        for i, (caption, cap_type, page) in enumerate(orphan_captions, 1):
+            if cap_type == "table":
+                appendix += f"### 표 {i}\n\n{caption}\n\n"
+            else:
+                page_info = f" (페이지 {page})" if page else ""
+                appendix += f"### 이미지 {i}{page_info}\n\n> {caption}\n\n"
+        return content + appendix
+
     async def parse_file(
         self,
         file_path: str,
-        output_format: str = "html",
+        output_format: str = "markdown",  # Changed: Markdown 기본값
         caption_images: bool = True,
     ) -> ParsingResult:
         """
