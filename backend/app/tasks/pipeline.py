@@ -10,6 +10,7 @@ from typing import Any
 
 from celery import shared_task
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -100,13 +101,26 @@ def run_full_pipeline(
         
         async with get_celery_session() as db:
             try:
+                # Check if document already exists
+                existing_doc = await db.execute(
+                    select(Document).where(Document.drive_id == drive_id)
+                )
+                existing = existing_doc.scalar_one_or_none()
+                if existing:
+                    logger.info("Document already exists, skipping", drive_id=drive_id)
+                    return {
+                        "status": "skipped",
+                        "reason": "Document already exists",
+                        "document_id": existing.id,
+                    }
+
                 # Step 2: Classification
                 classifier = ClassificationService()
                 classification = await classifier.classify_document(
                     filename=filename,
                     folder_path=folder_path,
                 )
-                
+
                 # Create document record
                 document = Document(
                     drive_id=drive_id,
