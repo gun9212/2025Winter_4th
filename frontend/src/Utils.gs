@@ -121,7 +121,7 @@ function apiChat(query, sessionId, userLevel, options) {
   const payload = {
     query: query,
     session_id: finalSessionId,
-    user_level: userLevel || 4,
+    user_level: userLevel || 1,
     options: options || {
       max_results: 5,
       include_sources: true
