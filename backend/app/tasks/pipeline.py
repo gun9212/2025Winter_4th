@@ -300,7 +300,7 @@ def ingest_folder(
             run_full_pipeline.delay(
                 file_path=file_info["path"],
                 filename=file_info["name"],
-                drive_id=file_info.get("drive_id", file_info["name"]),
+                drive_id=file_info.get("drive_id") or f"local:{file_info['path']}",
                 folder_path=file_info.get("full_folder_path", ""),
             )
             processed += 1
