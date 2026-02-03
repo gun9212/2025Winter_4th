@@ -244,6 +244,9 @@ function apiGenerateMinutes(params) {
     meetingDate = formatDate(meetingDate, 'YYYY-MM-DD');
   }
   
+  // 현재 사용자 이메일 가져오기 (Service Account 모드에서 파일 공유용)
+  const userEmail = Session.getActiveUser().getEmail();
+  
   const payload = {
     agenda_doc_id: params.agendaDocId,
     transcript_doc_id: transcriptDocId,
@@ -259,7 +262,8 @@ function apiGenerateMinutes(params) {
     output_doc_id: params.outputDocId && params.outputDocId.trim() !== ''
       ? params.outputDocId.trim()
       : null,
-    user_level: params.userLevel || 2
+    user_level: params.userLevel || 2,
+    user_email: userEmail || null
   };
   
   return callAPI('/minutes/generate', 'POST', payload);

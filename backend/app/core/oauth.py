@@ -24,7 +24,13 @@ SCOPES = [
 ]
 
 # Paths for OAuth credentials
-CREDENTIALS_DIR = Path(__file__).parent.parent.parent.parent / "credentials"
+# Docker: /app/credentials, Local: backend/../credentials
+import os
+if os.path.exists("/app/credentials"):
+    CREDENTIALS_DIR = Path("/app/credentials")
+else:
+    CREDENTIALS_DIR = Path(__file__).parent.parent.parent.parent / "credentials"
+    
 OAUTH_CLIENT_PATH = CREDENTIALS_DIR / "oauth_client.json"
 OAUTH_TOKEN_PATH = CREDENTIALS_DIR / "oauth_token.json"
 
@@ -53,22 +59,16 @@ def get_oauth_credentials() -> Credentials:
         if creds and creds.expired and creds.refresh_token:
             # Refresh existing token
             creds.refresh(Request())
+            # Save refreshed token
+            with open(OAUTH_TOKEN_PATH, "w") as token:
+                token.write(creds.to_json())
         else:
-            # Need new authentication
-            if not OAUTH_CLIENT_PATH.exists():
-                raise FileNotFoundError(
-                    f"OAuth client credentials not found at {OAUTH_CLIENT_PATH}. "
-                    "Please download from GCP Console and save as 'oauth_client.json'"
-                )
-            
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(OAUTH_CLIENT_PATH), SCOPES
+            # Token doesn't exist or can't be refreshed
+            # In production, this should already be set up
+            raise FileNotFoundError(
+                f"OAuth token not found or expired at {OAUTH_TOKEN_PATH}. "
+                "Please run 'python manual_oauth.py' to generate a new token."
             )
-            creds = flow.run_local_server(port=0)
-        
-        # Save token for future use
-        with open(OAUTH_TOKEN_PATH, "w") as token:
-            token.write(creds.to_json())
     
     return creds
 

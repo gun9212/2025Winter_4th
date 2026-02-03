@@ -176,7 +176,8 @@ class GoogleDocsService:
         return self.batch_update(document_id, requests)
 
     def copy_document(
-        self, document_id: str, new_title: str, parent_folder_id: str | None = None
+        self, document_id: str, new_title: str, parent_folder_id: str | None = None,
+        share_with_email: str | None = None
     ) -> dict[str, Any]:
         """
         Create a copy of a document using Drive API copy.
@@ -188,6 +189,7 @@ class GoogleDocsService:
             document_id: The source document ID.
             new_title: Title for the new document.
             parent_folder_id: Folder ID where the doc should be created.
+            share_with_email: Email to share the document with (writer permission).
 
         Returns:
             New document metadata with 'id' key.
@@ -198,8 +200,33 @@ class GoogleDocsService:
         if parent_folder_id:
             body["parents"] = [parent_folder_id]
 
-        return drive_service.files().copy(
+        result = drive_service.files().copy(
             fileId=document_id,
             body=body,
-            fields="id, name"
+            fields="id, name, webViewLink"
         ).execute()
+        
+        # Share with user if email provided (for Service Account created files)
+        if share_with_email and result.get("id"):
+            try:
+                drive_service.permissions().create(
+                    fileId=result["id"],
+                    body={
+                        "type": "user",
+                        "role": "writer",
+                        "emailAddress": share_with_email
+                    },
+                    sendNotificationEmail=False,
+                    fields="id"
+                ).execute()
+            except Exception as e:
+                # Log but don't fail - file is still created
+                import structlog
+                structlog.get_logger().warning(
+                    "Failed to share document",
+                    doc_id=result["id"],
+                    email=share_with_email,
+                    error=str(e)
+                )
+        
+        return result

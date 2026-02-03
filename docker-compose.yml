@@ -21,7 +21,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - ./credentials:/app/credentials:ro
+      - ./credentials:/app/credentials  # OAuth 토큰 저장을 위해 rw 필요
       - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
@@ -54,7 +54,7 @@ services:
     container_name: council-ai-celery
     volumes:
       - ./backend:/app
-      - ./credentials:/app/credentials:ro
+      - ./credentials:/app/credentials  # OAuth 토큰 저장을 위해 rw 필요
       - ./scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs

@@ -98,6 +98,11 @@ class MinutesGenerationRequest(BaseModel):
         le=4,
         description="User access level",
     )
+    user_email: str | None = Field(
+        default=None,
+        description="User email to share the output document with (required for Service Account mode)",
+        examples=["user@example.com"],
+    )
     
     @field_validator("transcript_text")
     @classmethod
