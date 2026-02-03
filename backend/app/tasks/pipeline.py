@@ -106,13 +106,31 @@ def run_full_pipeline(
                     select(Document).where(Document.drive_id == drive_id)
                 )
                 existing = existing_doc.scalar_one_or_none()
+
                 if existing:
-                    logger.info("Document already exists, skipping", drive_id=drive_id)
-                    return {
-                        "status": "skipped",
-                        "reason": "Document already exists",
-                        "document_id": existing.id,
-                    }
+                    # If already COMPLETED, skip processing
+                    if existing.status == DocumentStatus.COMPLETED:
+                        logger.info("Document already completed, skipping", drive_id=drive_id)
+                        return {
+                            "status": "skipped",
+                            "reason": "Document already completed",
+                            "document_id": existing.id,
+                        }
+                    # If FAILED, also skip (needs manual reprocessing)
+                    elif existing.status == DocumentStatus.FAILED:
+                        logger.info("Document previously failed, skipping", drive_id=drive_id)
+                        return {
+                            "status": "skipped",
+                            "reason": "Document previously failed - use reprocess endpoint",
+                            "document_id": existing.id,
+                        }
+                    # If PENDING or in-progress, continue processing (reuse existing record)
+                    else:
+                        logger.info(
+                            "Continuing processing of existing document",
+                            drive_id=drive_id,
+                            current_status=existing.status.value,
+                        )
 
                 # Step 2: Classification
                 classifier = ClassificationService()
@@ -121,19 +139,33 @@ def run_full_pipeline(
                     folder_path=folder_path,
                 )
 
-                # Create document record
-                document = Document(
-                    drive_id=drive_id,
-                    drive_name=filename,
-                    drive_path=folder_path,
-                    doc_type=classification.doc_type,
-                    doc_category=classification.doc_category,
-                    meeting_subtype=classification.meeting_subtype,
-                    standardized_name=classification.standardized_name,
-                    year=classification.year,
-                    status=DocumentStatus.PARSING,
-                )
-                db.add(document)
+                # Create or update document record
+                if existing:
+                    # Reuse existing PENDING document
+                    document = existing
+                    document.drive_name = filename
+                    document.drive_path = folder_path
+                    document.doc_type = classification.doc_type
+                    document.doc_category = classification.doc_category
+                    document.meeting_subtype = classification.meeting_subtype
+                    document.standardized_name = classification.standardized_name
+                    document.year = classification.year
+                    document.status = DocumentStatus.PARSING
+                    logger.info("Updated existing document", document_id=document.id)
+                else:
+                    # Create new document
+                    document = Document(
+                        drive_id=drive_id,
+                        drive_name=filename,
+                        drive_path=folder_path,
+                        doc_type=classification.doc_type,
+                        doc_category=classification.doc_category,
+                        meeting_subtype=classification.meeting_subtype,
+                        standardized_name=classification.standardized_name,
+                        year=classification.year,
+                        status=DocumentStatus.PARSING,
+                    )
+                    db.add(document)
                 await db.flush()
                 
                 # Step 3: Parsing
@@ -311,10 +343,12 @@ def ingest_folder(
         for file_info in result["files"]:
             # Note: event_hints removed per Ground Truth
             # Event is determined at chunk level during enrichment
+            # IMPORTANT: Use relative_path for drive_id to match register_files_to_db()
+            relative_path = file_info.get("relative_path", file_info["path"])
             run_full_pipeline.delay(
-                file_path=file_info["path"],
+                file_path=file_info["path"],  # Absolute path for file reading
                 filename=file_info["name"],
-                drive_id=file_info.get("drive_id") or f"local:{file_info['path']}",
+                drive_id=file_info.get("drive_id") or f"local:{relative_path}",
                 folder_path=file_info.get("full_folder_path", ""),
             )
             processed += 1
