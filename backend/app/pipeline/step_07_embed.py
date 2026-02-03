@@ -225,7 +225,7 @@ class EmbeddingService:
             JOIN documents d ON c.document_id = d.id
             WHERE c.embedding IS NOT NULL
                 AND c.is_parent = FALSE
-                AND c.access_level >= :access_level
+                AND c.access_level <= :access_level
         """
         
         params = {
@@ -362,7 +362,7 @@ class EmbeddingService:
             JOIN documents d ON c.document_id = d.id
             WHERE c.embedding IS NOT NULL
                 AND c.is_parent = FALSE
-                AND c.access_level >= :access_level
+                AND c.access_level <= :access_level
                 AND d.time_decay_date IS NOT NULL
         """
 

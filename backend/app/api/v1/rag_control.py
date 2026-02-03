@@ -161,11 +161,11 @@ async def search_documents(
         query_embedding = await embedding_service.embed_single(request.query)
 
         # Step 2: 하이브리드 검색 (시맨틱 + 시간 가중치)
-        logger.info("Searching with time decay", top_k=request.top_k)
+        logger.info("Searching with time decay", top_k=request.top_k, user_level=request.user_level)
         search_results = await embedding_service.search_with_time_decay(
             query_embedding=query_embedding,
             limit=request.top_k,
-            access_level=4,  # 기본값: 공개 문서만 (추후 사용자 레벨 연동)
+            access_level=request.user_level,
         )
 
         if not search_results:

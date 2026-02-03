@@ -84,10 +84,16 @@ class SearchRequest(BaseModel):
         max_length=2000,
     )
     top_k: int = Field(
-        default=5,
+        default=10,
         ge=1,
         le=20,
         description="Number of results to return",
+    )
+    user_level: int = Field(
+        default=4,
+        ge=1,
+        le=4,
+        description="User access level (1: 회장단만, 2: 국장단까지, 3: 모든 국원, 4: 일반 대중)",
     )
     include_context: bool = Field(
         default=True,
