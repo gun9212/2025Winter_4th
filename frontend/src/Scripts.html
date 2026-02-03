@@ -283,7 +283,7 @@ function sendChatMessage() {
       showToast('서버 오류', 'error');
       console.error('[Council-AI] Chat failure:', error);
     })
-    .apiChat(query, State.chatSessionId, 4, { max_results: 5, include_sources: true });
+    .apiChat(query, State.chatSessionId, 1, { max_results: 5, include_sources: true });
 }
 
 function addTypingIndicator() {
