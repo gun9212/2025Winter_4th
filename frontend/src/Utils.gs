@@ -300,23 +300,34 @@ function apiExtractTodos(resultDocId, includeContext) {
 }
 
 /**
- * 캘린더 이벤트 생성
+ * 캘린더 이벤트 생성 (GAS Native - Backend 우회)
+ * 
+ * Backend API 대신 GAS의 CalendarApp을 직접 사용하여
+ * 사용자 권한으로 캘린더에 이벤트를 등록합니다.
+ * 
  * @param {Object} eventData - 이벤트 데이터
- * @returns {Object} 생성된 이벤트 정보
+ * @param {string} eventData.summary - 이벤트 제목
+ * @param {string} eventData.dtStart - 시작 시간 (ISO String, e.g., "2026-02-04T10:00:00")
+ * @param {string} eventData.dtEnd - 종료 시간 (ISO String)
+ * @param {string} [eventData.description] - 이벤트 설명
+ * @param {string} [eventData.assigneeEmail] - 담당자 이메일 (게스트로 초대)
+ * @param {string} [eventData.calendarId] - 캘린더 ID (기본값: primary)
+ * @returns {Object} 결과 { success, eventId, htmlLink, error }
+ * 
+ * @example
+ * const result = apiCreateCalendarEvent({
+ *   summary: "축제 가수 섭외",
+ *   dtStart: "2026-02-04T10:00:00",
+ *   dtEnd: "2026-02-04T11:00:00",
+ *   description: "운영위 결정사항",
+ *   assigneeEmail: "culture@kaist.ac.kr",
+ *   calendarId: "family17646575737663238512@group.calendar.google.com"
+ * });
  */
 function apiCreateCalendarEvent(eventData) {
-  const payload = {
-    summary: eventData.summary,
-    dt_start: eventData.dtStart,
-    dt_end: eventData.dtEnd,
-    description: eventData.description || '',
-    assignee_email: eventData.assigneeEmail || null,
-    calendar_id: eventData.calendarId || 'primary',
-    reminder_minutes: eventData.reminderMinutes || 60,
-    source_doc_id: eventData.sourceDocId || null
-  };
-  
-  return callAPI('/calendar/events/create', 'POST', payload);
+  // GAS Native 함수 직접 호출 (Code.gs의 createCalendarEvent)
+  // Backend API를 우회하여 사용자 권한으로 캘린더에 직접 등록
+  return createCalendarEvent(eventData);
 }
 
 // ============================================

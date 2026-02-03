@@ -671,6 +671,27 @@
               <p id="calendar-source-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
             </div>
             
+            <!-- 대상 캘린더 선택 -->
+            <div class="mb-4">
+              <label class="block text-xs text-google-gray mb-1">대상 캘린더</label>
+              <select 
+                id="target-calendar-id" 
+                name="target-calendar-id"
+                class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              >
+                <option value="primary">📅 내 캘린더 (기본)</option>
+                <option value="family17646575737663238512@group.calendar.google.com">👥 팀 캘린더</option>
+              </select>
+              <p class="text-xs text-gray-400 mt-1">팀 캘린더에 등록하려면 쓰기 권한이 필요합니다.</p>
+              <button 
+                type="button"
+                id="check-calendar-access-btn"
+                class="mt-2 text-xs text-google-blue hover:underline"
+              >
+                🔐 캘린더 권한 확인
+              </button>
+            </div>
+            
             <!-- 추출 버튼 -->
             <button 
               id="extract-todos-btn"

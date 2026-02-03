@@ -336,3 +336,197 @@ function getDocumentUrl(docId) {
 function getFolderUrl(folderId) {
   return `https://drive.google.com/drive/folders/${folderId}`;
 }
+
+// ============================================
+// Google Calendar (GAS Native)
+// ============================================
+
+/**
+ * 캘린더 이벤트 생성 (GAS Native - Backend 우회)
+ * 
+ * 팀 캘린더(Shared Calendar)에 이벤트를 등록합니다.
+ * 사용자에게 해당 캘린더에 대한 쓰기 권한(WRITER/OWNER)이 필요합니다.
+ * 
+ * @param {Object} eventData - 이벤트 데이터
+ * @param {string} eventData.summary - 이벤트 제목
+ * @param {string} eventData.dtStart - 시작 시간 (ISO String)
+ * @param {string} eventData.dtEnd - 종료 시간 (ISO String)
+ * @param {string} [eventData.description] - 이벤트 설명
+ * @param {string} [eventData.assigneeEmail] - 담당자 이메일 (게스트로 초대)
+ * @param {string} [eventData.calendarId] - 캘린더 ID (기본값: primary)
+ * @returns {Object} 결과 { success, eventId, htmlLink, error }
+ */
+function createCalendarEvent(eventData) {
+  try {
+    // 1. 캘린더 ID 결정 (기본값: primary)
+    const calendarId = eventData.calendarId || 'primary';
+    
+    // 2. 캘린더 객체 획득
+    let calendar;
+    if (calendarId === 'primary') {
+      calendar = CalendarApp.getDefaultCalendar();
+    } else {
+      calendar = CalendarApp.getCalendarById(calendarId);
+    }
+    
+    if (!calendar) {
+      throw new Error(`캘린더를 찾을 수 없습니다: ${calendarId}`);
+    }
+    
+    // 3. 🛡️ 권한 체크 (핵심!)
+    const accessLevel = calendar.getEffectiveAccess();
+    const calendarName = calendar.getName();
+    
+    // OWNER 또는 WRITER 권한이 있어야 이벤트 생성 가능
+    if (accessLevel !== CalendarApp.AccessMode.OWNER && 
+        accessLevel !== CalendarApp.AccessMode.WRITER) {
+      throw new Error(
+        `캘린더 "${calendarName}"에 쓰기 권한이 없습니다.\n` +
+        `현재 권한: ${accessLevel}\n` +
+        `캘린더 관리자에게 WRITER 이상의 권한을 요청하세요.`
+      );
+    }
+    
+    // 4. 시간 파싱 (ISO String → Date)
+    const startTime = new Date(eventData.dtStart);
+    const endTime = new Date(eventData.dtEnd);
+    
+    // 시간 유효성 검사
+    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+      throw new Error('유효하지 않은 날짜 형식입니다.');
+    }
+    
+    if (endTime <= startTime) {
+      throw new Error('종료 시간은 시작 시간보다 이후여야 합니다.');
+    }
+    
+    // 5. 이벤트 옵션 구성
+    const options = {};
+    
+    // 설명 추가
+    if (eventData.description) {
+      options.description = eventData.description;
+    }
+    
+    // 담당자를 게스트로 초대 (유효한 이메일인 경우)
+    if (eventData.assigneeEmail && isValidEmailAddress(eventData.assigneeEmail)) {
+      options.guests = eventData.assigneeEmail;
+      options.sendInvites = true; // 초대 이메일 발송
+    }
+    
+    // 6. 이벤트 생성
+    const event = calendar.createEvent(
+      eventData.summary,
+      startTime,
+      endTime,
+      options
+    );
+    
+    // 7. 결과 반환
+    const eventId = event.getId();
+    
+    // Google Calendar 웹 링크 생성
+    // 형식: https://calendar.google.com/calendar/event?eid=BASE64_ENCODED_ID
+    const encodedEventId = Utilities.base64Encode(eventId + ' ' + calendarId);
+    const htmlLink = `https://calendar.google.com/calendar/event?eid=${encodedEventId}`;
+    
+    Logger.log(`이벤트 생성 성공: ${eventData.summary} → ${calendarName}`);
+    
+    return {
+      success: true,
+      eventId: eventId,
+      htmlLink: htmlLink,
+      calendarName: calendarName,
+      summary: eventData.summary,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString()
+    };
+    
+  } catch (error) {
+    Logger.log(`이벤트 생성 실패: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * 이메일 주소 유효성 검사
+ * @param {string} email - 이메일 주소
+ * @returns {boolean} 유효 여부
+ */
+function isValidEmailAddress(email) {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
+/**
+ * 캘린더 접근 권한 확인 (디버깅/테스트용)
+ * @param {string} calendarId - 캘린더 ID
+ * @returns {Object} 권한 정보
+ */
+function checkCalendarAccess(calendarId) {
+  try {
+    const calendar = calendarId === 'primary' 
+      ? CalendarApp.getDefaultCalendar()
+      : CalendarApp.getCalendarById(calendarId);
+    
+    if (!calendar) {
+      return {
+        success: false,
+        error: `캘린더를 찾을 수 없습니다: ${calendarId}`
+      };
+    }
+    
+    const accessLevel = calendar.getEffectiveAccess();
+    const canWrite = accessLevel === CalendarApp.AccessMode.OWNER || 
+                     accessLevel === CalendarApp.AccessMode.WRITER;
+    
+    return {
+      success: true,
+      calendarId: calendarId,
+      calendarName: calendar.getName(),
+      accessLevel: accessLevel.toString(),
+      canWrite: canWrite,
+      isOwner: accessLevel === CalendarApp.AccessMode.OWNER
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * 사용자가 접근 가능한 모든 캘린더 목록 조회
+ * @returns {Array} 캘린더 목록
+ */
+function getAccessibleCalendars() {
+  try {
+    const calendars = CalendarApp.getAllCalendars();
+    
+    return calendars.map(function(cal) {
+      const access = cal.getEffectiveAccess();
+      return {
+        id: cal.getId(),
+        name: cal.getName(),
+        accessLevel: access.toString(),
+        canWrite: access === CalendarApp.AccessMode.OWNER || 
+                  access === CalendarApp.AccessMode.WRITER,
+        isOwned: access === CalendarApp.AccessMode.OWNER,
+        color: cal.getColor()
+      };
+    }).sort(function(a, b) {
+      // 쓰기 가능한 캘린더를 먼저 정렬
+      if (a.canWrite && !b.canWrite) return -1;
+      if (!a.canWrite && b.canWrite) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  } catch (error) {
+    Logger.log('캘린더 목록 조회 실패: ' + error.message);
+    return [];
+  }
+}

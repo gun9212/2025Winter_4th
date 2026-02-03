@@ -686,6 +686,42 @@
     document.getElementById('extract-todos-btn').addEventListener('click', extractTodos);
     document.getElementById('register-todos-btn').addEventListener('click', registerTodos);
     document.getElementById('select-all-todos').addEventListener('change', toggleAllTodos);
+    
+    // 캘린더 권한 확인 버튼
+    document.getElementById('check-calendar-access-btn').addEventListener('click', checkCalendarAccess);
+  }
+
+  /**
+   * 선택한 캘린더에 대한 쓰기 권한 확인
+   */
+  function checkCalendarAccess() {
+    const calendarId = document.getElementById('target-calendar-id').value;
+    const btn = document.getElementById('check-calendar-access-btn');
+    const originalText = btn.textContent;
+    btn.textContent = '확인 중...';
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        
+        if (result.success) {
+          if (result.canWrite) {
+            showToast(`✅ "${result.calendarName}" 캘린더에 쓰기 권한이 있습니다. (${result.accessLevel})`, 'success');
+          } else {
+            showToast(`⚠️ "${result.calendarName}" 캘린더에 쓰기 권한이 없습니다. (${result.accessLevel})`, 'warning');
+          }
+        } else {
+          showToast('❌ ' + result.error, 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        showToast('권한 확인 실패: ' + error.message, 'error');
+      })
+      .checkCalendarAccess(calendarId);
   }
 
   function extractTodos() {
@@ -813,6 +849,9 @@
     const cards = document.querySelectorAll('.todo-card');
     const todosToRegister = [];
     const invalidItems = [];
+    
+    // 대상 캘린더 ID 가져오기
+    const calendarId = document.getElementById('target-calendar-id').value;
 
     cards.forEach(function (card) {
       const checkbox = card.querySelector('.todo-checkbox');
@@ -843,7 +882,8 @@
         dtStart: date + 'T09:00:00',
         dtEnd: date + 'T10:00:00',
         assigneeEmail: assignee || null,
-        description: 'Council-AI에서 추출된 할일'
+        description: 'Council-AI에서 추출된 할일',
+        calendarId: calendarId  // 대상 캘린더 ID 추가
       });
     });
 
@@ -918,14 +958,20 @@
           completed++;
           if (result.success) {
             succeeded++;
+            console.log('[Calendar] 이벤트 생성 성공:', result);
           } else {
             failed++;
             failedItems.push(todo.index);
+            // 실패 이유 표시 (권한 없음 등)
+            console.error('[Calendar] 이벤트 생성 실패:', result.error);
+            if (result.error && result.error.includes('쓰기 권한')) {
+              showToast('⚠️ 캘린더 쓰기 권한이 없습니다. 캘린더 관리자에게 권한을 요청하세요.', 'error');
+            }
           }
           updateRegisterProgress();
           registerNext(index + 1);
         })
-        .withFailureHandler(function () {
+        .withFailureHandler(function (error) {
           completed++;
           failed++;
           failedItems.push(todo.index);
