@@ -121,7 +121,7 @@ function apiChat(query, sessionId, userLevel, options) {
   const payload = {
     query: query,
     session_id: finalSessionId,
-    user_level: userLevel || 1,
+    user_level: userLevel || 4,
     options: options || {
       max_results: 5,
       include_sources: true
@@ -158,16 +158,18 @@ function apiDeleteChatHistory(sessionId) {
  * @param {string} query - 검색어
  * @param {number} topK - 결과 개수
  * @param {boolean} generateAnswer - 답변 생성 여부
+ * @param {number} userLevel - 사용자 권한 레벨 (1-4)
  * @returns {Object} 검색 결과
  */
-function apiRagSearch(query, topK, generateAnswer) {
+function apiRagSearch(query, topK, generateAnswer, userLevel) {
   const payload = {
     query: query,
-    top_k: topK || 5,
+    top_k: topK || 10,
+    user_level: userLevel || 4,
     include_context: true,
     generate_answer: generateAnswer !== false
   };
-  
+
   return callAPI('/rag/search', 'POST', payload);
 }
 
@@ -185,9 +187,9 @@ function apiIngestFolder(folderId, options, userLevel) {
       recursive: true,
       file_types: ['google_doc', 'pdf', 'docx']
     },
-    user_level: userLevel || 2
+    user_level: userLevel || 4
   };
-  
+
   return callAPI('/rag/ingest/folder', 'POST', payload);
 }
 
