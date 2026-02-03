@@ -380,7 +380,8 @@ function addChatMessage(role, content, isLoading, sources, metadata) {
         
         // 문서 제목
         const title = src.document_title || src.document_name || src.title || 'Document';
-        const driveLink = src.drive_link || src.url || '#';
+        // GAS 환경에서 '#'는 ERR_FAILED를 유발하므로 javascript:void(0) 사용
+        const driveLink = src.drive_link || src.url || 'javascript:void(0)';
         
         sourceItem.innerHTML = `
           <a href="${driveLink}" target="_blank" class="source-link">${escapeHtml(title)}</a>
@@ -1236,14 +1237,24 @@ function createPicker(targetInputId, pickerType) {
       .setMimeTypes('application/vnd.google-apps.document');
   }
   
-  const picker = new google.picker.PickerBuilder()
+  // GAS 사이드바에서 Picker를 사용하려면 올바른 origin 설정이 필수
+  // google.script.host.origin은 GAS 사이드바의 실제 origin을 반환
+  const origin = google.script.host.origin;
+  
+  const pickerBuilder = new google.picker.PickerBuilder()
     .addView(view)
     .setOAuthToken(State.oauthToken)
+    .setOrigin(origin)  // GAS 환경에서 필수!
     .setCallback(function(data) {
       pickerCallback(data, targetInputId);
-    })
-    .build();
+    });
   
+  // Developer Key가 있으면 추가 (선택적)
+  if (State.developerKey) {
+    pickerBuilder.setDeveloperKey(State.developerKey);
+  }
+  
+  const picker = pickerBuilder.build();
   picker.setVisible(true);
 }
 

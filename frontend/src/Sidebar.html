@@ -5,15 +5,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <!-- TailwindCSS v3.4.1 -->
-  <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+  <!--
+    ============================================
+    Council-AI GAS Sidebar - 개발자 노트
+    ============================================
+    
+    [예상되는 콘솔 경고 - 모두 무시해도 안전함]
+    
+    1. "Unrecognized feature: 'ambient-light-sensor/speaker/vibrate/vr'"
+       → GAS Iframe의 Permissions Policy에서 지원하지 않는 기능들입니다.
+       → 외부 CDN 스크립트가 이 기능들을 감지하려고 시도할 때 발생합니다.
+       → 기능에 영향 없음.
+    
+    2. "cdn.tailwindcss.com should not be used in production"
+       → TailwindCSS CDN 사용 경고입니다.
+       → GAS 환경에서는 빌드 시스템 없이 CDN 사용이 가장 실용적입니다.
+       → 내부 도구이므로 무시해도 됩니다.
+    
+    3. "net::ERR_FAILED (invalid/:1)"
+       → GAS Iframe의 CSP로 인해 일부 리소스 요청이 차단됩니다.
+       → 핵심 기능(Tailwind, Marked, Highlight.js)은 정상 로드됩니다.
+    
+    4. "IntlV8BreakIterator is deprecated"
+       → Chrome 내부 API 경고입니다. 무시해도 됩니다.
+    ============================================
+  -->
   
-  <!-- Marked.js v4.0.0 for Markdown rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js"></script>
+  <!-- 
+    TailwindCSS v3.4.16 (CDN - 최신 안정 버전)
+    ⚠️ NOTE: 콘솔에 "cdn.tailwindcss.com should not be used in production" 경고가 표시되지만,
+    이는 GAS Add-on 환경에서 빌드 시스템 없이 사용하기 위한 의도적 선택입니다.
+    GAS 사이드바는 내부 도구이므로 프로덕션 빌드가 불필요합니다.
+    이 경고는 기능에 영향을 주지 않으므로 무시해도 안전합니다.
+  -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   
-  <!-- Highlight.js for code syntax highlighting (bundle version) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
-  <script src="https://cdn.jsdelivr.net/gh/nicolo-ribaudo/highlight.js-cdn@11.9.0/build/highlight.min.js"></script>
+  <!-- Marked.js v4.3.0 for Markdown rendering (cdnjs) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+  
+  <!-- Highlight.js for code syntax highlighting (공식 CDN) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   
   <!-- Google Picker API -->
   <script src="https://apis.google.com/js/api.js"></script>
@@ -379,6 +411,7 @@
           <div class="flex gap-2">
             <textarea 
               id="chat-input" 
+              name="chat-input"
               class="flex-1 border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-google-blue focus:border-transparent"
               placeholder="메시지를 입력하세요..."
               rows="2"
@@ -416,6 +449,7 @@
                 <input 
                   type="text" 
                   id="agenda-doc-id" 
+                  name="agenda-doc-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="Google Docs ID"
                   readonly
@@ -439,6 +473,7 @@
                 <input 
                   type="text" 
                   id="transcript-doc-id" 
+                  name="transcript-doc-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="Google Docs ID (선택)"
                   readonly
@@ -462,6 +497,7 @@
                 <input 
                   type="text" 
                   id="template-doc-id" 
+                  name="template-doc-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="템플릿 ID (미입력시 안건지 복사)"
                   readonly
@@ -492,6 +528,7 @@
                 <input 
                   type="text" 
                   id="meeting-name" 
+                  name="meeting-name"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   placeholder="예: 제12차 운영위원회"
                 >
@@ -501,6 +538,7 @@
                 <input 
                   type="date" 
                   id="meeting-date" 
+                  name="meeting-date"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                 >
               </div>
@@ -513,6 +551,7 @@
                 <input 
                   type="text" 
                   id="output-folder-id" 
+                  name="output-folder-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="폴더 ID"
                   readonly
@@ -579,7 +618,7 @@
               <div class="flex gap-2">
                 <a 
                   id="minutes-result-link" 
-                  href="#" 
+                  href="javascript:void(0)" 
                   target="_blank"
                   class="flex-1 inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded hover:bg-green-50 transition-colors"
                 >
@@ -615,6 +654,7 @@
                 <input 
                   type="text" 
                   id="calendar-source-doc-id" 
+                  name="calendar-source-doc-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="Google Docs ID"
                   readonly
@@ -656,7 +696,7 @@
                 <span id="todos-count" class="text-xs bg-google-blue text-white px-2 py-0.5 rounded-full">0</span>
               </h4>
               <label class="flex items-center gap-2 text-xs text-gray-600">
-                <input type="checkbox" id="select-all-todos" checked class="rounded">
+                <input type="checkbox" id="select-all-todos" name="select-all-todos" checked class="rounded">
                 전체 선택
               </label>
             </div>
@@ -734,6 +774,7 @@
                 <input 
                   type="text" 
                   id="ingest-folder-id" 
+                  name="ingest-folder-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="폴더 ID"
                   readonly
@@ -776,7 +817,7 @@
             <div class="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label class="block text-xs text-google-gray mb-1">대상 연도 *</label>
-                <select id="handover-year" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                <select id="handover-year" name="handover-year" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
                   <option value="2025">2025년</option>
                   <option value="2024">2024년</option>
                   <option value="2023">2023년</option>
@@ -787,6 +828,7 @@
                 <input 
                   type="text" 
                   id="handover-department" 
+                  name="handover-department"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   placeholder="예: 문화국"
                 >
@@ -799,6 +841,7 @@
                 <input 
                   type="text" 
                   id="handover-folder-id" 
+                  name="handover-folder-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
                   placeholder="폴더 ID"
                   readonly
@@ -864,7 +907,7 @@
               <div class="flex gap-2">
                 <a 
                   id="handover-result-link" 
-                  href="#" 
+                  href="javascript:void(0)" 
                   target="_blank"
                   class="flex-1 inline-flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 px-4 py-2 rounded hover:bg-green-50 transition-colors"
                 >
@@ -893,6 +936,7 @@
                 <input 
                   type="text" 
                   id="settings-api-url" 
+                  name="settings-api-url"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   placeholder="https://your-backend.com/api/v1"
                 >
@@ -902,6 +946,7 @@
                 <input 
                   type="password" 
                   id="settings-api-key" 
+                  name="settings-api-key"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   placeholder="API Key 입력"
                 >
@@ -911,6 +956,7 @@
                 <input 
                   type="password" 
                   id="settings-picker-key" 
+                  name="settings-picker-key"
                   class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   placeholder="Picker API Key"
                 >

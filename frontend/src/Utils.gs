@@ -67,9 +67,28 @@ function callAPI(endpoint, method, payload, options) {
       errorData = { detail: responseText };
     }
     
+    // FastAPI validation error는 detail이 배열 형태
+    // 예: [{"loc": ["body", "meeting_date"], "msg": "...", "type": "..."}]
+    let errorMessage = responseText;
+    if (errorData.detail) {
+      if (Array.isArray(errorData.detail)) {
+        // Validation 에러 배열을 읽기 쉬운 문자열로 변환
+        errorMessage = errorData.detail.map(function(err) {
+          const field = err.loc ? err.loc.slice(1).join('.') : 'unknown';
+          return field + ': ' + (err.msg || err.message || JSON.stringify(err));
+        }).join('; ');
+      } else if (typeof errorData.detail === 'object') {
+        errorMessage = JSON.stringify(errorData.detail);
+      } else {
+        errorMessage = errorData.detail;
+      }
+    } else if (errorData.message) {
+      errorMessage = errorData.message;
+    }
+    
     return {
       success: false,
-      error: errorData.detail || errorData.message || responseText,
+      error: errorMessage,
       errorData: errorData,
       statusCode: responseCode
     };

@@ -3,7 +3,8 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+  <!-- TailwindCSS v3.4.16 (Sidebar.html과 동일 버전) -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 </head>
 <body class="bg-gray-50 p-6">
   <div class="max-w-md mx-auto">
@@ -17,6 +18,7 @@
         <input 
           type="text" 
           id="api-url" 
+          name="api-url"
           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="https://your-backend.com/api/v1"
         >
@@ -27,6 +29,7 @@
         <input 
           type="password" 
           id="api-key" 
+          name="api-key"
           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="새 API Key 입력 (변경 시에만)"
         >
@@ -38,6 +41,7 @@
         <input 
           type="password" 
           id="picker-key" 
+          name="picker-key"
           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Picker API Key (변경 시에만)"
         >
