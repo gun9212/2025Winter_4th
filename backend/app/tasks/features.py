@@ -45,6 +45,7 @@ def generate_minutes(
     meeting_name: str = "Untitled Meeting",
     meeting_date: str | None = None,
     output_folder_id: str | None = None,
+    user_email: str | None = None,
 ) -> dict[str, Any]:
     """
     Generate a result document from agenda template and meeting transcript.
@@ -64,6 +65,7 @@ def generate_minutes(
         meeting_name: Meeting name for output document
         meeting_date: Meeting date (ISO format)
         output_folder_id: Google Drive folder ID for output
+        user_email: Email to share the result document with (for Service Account mode)
         
     Returns:
         Task result with output_doc_id and status
@@ -75,7 +77,8 @@ def generate_minutes(
         from app.services.ai.gemini import GeminiService
         from app.services.text_utils import split_by_headers, build_placeholder_map
         
-        # Use OAuth credentials if available (for user's Drive quota)
+        # Use OAuth credentials - files created in authenticated user's Drive
+        # Requires oauth_client.json and oauth_token.json in credentials folder
         docs_service = GoogleDocsService(use_oauth=True)
         gemini = GeminiService()
         
@@ -84,6 +87,7 @@ def generate_minutes(
             meeting_name=meeting_name,
             agenda_doc_id=agenda_doc_id[:8],
             has_transcript_doc=bool(transcript_doc_id),
+            user_email=user_email,
         )
         
         # Step 1: Load transcript content
@@ -144,11 +148,13 @@ def generate_minutes(
         source_doc_id = template_doc_id or agenda_doc_id
         result_doc_title = f"[결과지] {meeting_name}"
         
-        # Use output_folder_id to place result in user's Drive folder (avoids service account quota)
+        # Use output_folder_id to place result in user's Drive folder
+        # Share with user_email so they can access Service Account created files
         new_doc = docs_service.copy_document(
             source_doc_id, 
             result_doc_title,
-            parent_folder_id=output_folder_id
+            parent_folder_id=output_folder_id,
+            share_with_email=user_email
         )
         new_doc_id = new_doc.get("id")
         

@@ -214,18 +214,56 @@ function apiGetDocuments(skip, limit, status) {
  * 결과지 생성 요청
  * @param {Object} params - 생성 파라미터
  * @returns {Object} task_id 포함 응답
+ * 
+ * Backend Validator Note:
+ * - transcript_doc_id 또는 transcript_text 중 하나는 반드시 제공해야 함
+ * - 둘 다 없으면 422 Validation Error 발생
+ * - meeting_date는 'YYYY-MM-DD' 형식의 문자열로 전송 (ISO date)
  */
 function apiGenerateMinutes(params) {
+  // transcript 소스 검증: doc_id나 text 중 하나는 필수
+  const transcriptDocId = params.transcriptDocId && params.transcriptDocId.trim() !== '' 
+    ? params.transcriptDocId.trim() 
+    : null;
+  const transcriptText = params.transcriptText && params.transcriptText.trim() !== ''
+    ? params.transcriptText.trim()
+    : null;
+  
+  // 프론트엔드에서 사전 검증 (둘 다 없으면 에러)
+  if (!transcriptDocId && !transcriptText) {
+    return {
+      success: false,
+      error: '속기록이 필요합니다. 속기록 문서를 선택하거나 텍스트를 직접 입력해주세요.',
+      statusCode: 0
+    };
+  }
+  
+  // meeting_date가 Date 객체면 YYYY-MM-DD로 변환
+  let meetingDate = params.meetingDate;
+  if (meetingDate instanceof Date) {
+    meetingDate = formatDate(meetingDate, 'YYYY-MM-DD');
+  }
+  
+  // 현재 사용자 이메일 가져오기 (Service Account 모드에서 파일 공유용)
+  const userEmail = Session.getActiveUser().getEmail();
+  
   const payload = {
     agenda_doc_id: params.agendaDocId,
-    transcript_doc_id: params.transcriptDocId || null,
-    transcript_text: params.transcriptText || null,
-    template_doc_id: params.templateDocId || null,
+    transcript_doc_id: transcriptDocId,
+    transcript_text: transcriptText,
+    template_doc_id: params.templateDocId && params.templateDocId.trim() !== '' 
+      ? params.templateDocId.trim() 
+      : null,
     meeting_name: params.meetingName,
-    meeting_date: params.meetingDate || null,
-    output_folder_id: params.outputFolderId || null,
-    output_doc_id: params.outputDocId || null,
-    user_level: params.userLevel || 2
+    meeting_date: meetingDate,
+    output_folder_id: params.outputFolderId && params.outputFolderId.trim() !== ''
+      ? params.outputFolderId.trim()
+      : null,
+    output_doc_id: params.outputDocId && params.outputDocId.trim() !== ''
+      ? params.outputDocId.trim()
+      : null,
+    user_level: params.userLevel || 2,
+    user_email: userEmail || null
   };
   
   return callAPI('/minutes/generate', 'POST', payload);

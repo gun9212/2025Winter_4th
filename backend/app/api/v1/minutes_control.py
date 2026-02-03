@@ -83,6 +83,7 @@ async def generate_minutes(
             meeting_name=request.meeting_name,
             meeting_date=request.meeting_date.isoformat(),
             output_folder_id=request.output_folder_id,
+            user_email=request.user_email,
         )
         
         return MinutesGenerationResponse(
