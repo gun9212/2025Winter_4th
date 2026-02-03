@@ -1,9 +1,12 @@
 # Council-AI Database Schema
 
+> **Version:** 2.0.0  
+> **Database:** PostgreSQL 16 + pgvector  
+> **Last Updated:** 2026-02-02
+
 이 문서는 Council-AI의 RAG 시스템을 위한 PostgreSQL + pgvector 데이터베이스 스키마를 설명합니다.
 
-> [!IMPORTANT]
-> **2025-01-31 업데이트:** N:M 관계 구현을 위해 `DocumentChunk` 레벨에서 Event 매핑 추가. `ChatLog` 테이블 신규 생성.
+---
 
 ## ER 다이어그램
 
@@ -20,11 +23,18 @@ erDiagram
         varchar title
         int year
         date event_date
+        date start_date
+        date end_date
         varchar category
-        varchar status
+        varchar department
+        enum status
+        text description
         jsonb chunk_timeline
         jsonb decisions_summary
+        jsonb action_items
         array parent_chunk_ids
+        array child_chunk_ids
+        jsonb meta_data
     }
 
     DOCUMENTS {
@@ -32,29 +42,45 @@ erDiagram
         int event_id FK "nullable"
         varchar drive_id UK
         varchar drive_name
+        varchar drive_path
+        varchar mime_type
+        text gcs_url
         enum doc_type
         enum doc_category
         enum meeting_subtype
         int access_level
         varchar standardized_name
         date time_decay_date
-        text preprocessed_content
+        varchar department
+        int year
         enum status
+        text raw_content
+        text parsed_content
+        text preprocessed_content
+        jsonb doc_metadata
+        text error_message
+        timestamp processed_at
+        int current_step
     }
 
     DOCUMENT_CHUNKS {
         int id PK
         int document_id FK
         int parent_chunk_id FK
-        int related_event_id FK "NEW"
-        varchar inferred_event_title "NEW"
+        int related_event_id FK
+        varchar inferred_event_title
         bool is_parent
         int chunk_index
+        varchar chunk_type
         text content
         text parent_content
+        varchar section_header
         vector embedding
         int access_level
-        varchar section_header
+        jsonb chunk_metadata
+        int token_count
+        int start_char
+        int end_char
     }
 
     REFERENCES {
@@ -63,7 +89,9 @@ erDiagram
         text description
         text file_link
         varchar file_type
+        varchar file_name
         int access_level
+        jsonb file_metadata
     }
 
     CHAT_LOGS {
@@ -71,10 +99,15 @@ erDiagram
         varchar session_id
         int user_level
         text user_query
+        text rewritten_query
         text ai_response
         jsonb retrieved_chunks
+        jsonb sources
         int turn_index
         int latency_ms
+        int retrieval_latency_ms
+        int generation_latency_ms
+        jsonb request_metadata
     }
 ```
 
@@ -84,33 +117,35 @@ erDiagram
 
 학생회 행사/사업을 중심으로 문서를 조직하는 최상위 단위입니다.
 
-| Column              | Type                 | Description                             |
-| ------------------- | -------------------- | --------------------------------------- |
-| `id`                | `SERIAL PRIMARY KEY` | 고유 ID                                 |
-| `title`             | `VARCHAR(500)`       | 행사명 (예: "2025 새내기 배움터")       |
-| `year`              | `INTEGER`            | 행사 연도                               |
-| `event_date`        | `DATE`               | 행사 일자                               |
-| `start_date`        | `DATE`               | 시작일 (다일 행사)                      |
-| `end_date`          | `DATE`               | 종료일                                  |
-| `category`          | `VARCHAR(100)`       | 담당 국서 (문화국, 복지국 등)           |
-| `department`        | `VARCHAR(100)`       | 세부 담당                               |
-| `status`            | `ENUM`               | planned/in_progress/completed/cancelled |
-| `chunk_timeline`    | `JSONB`              | 회의별 청크 ID 매핑                     |
-| `decisions_summary` | `JSONB`              | 회의별 결정 사항 요약                   |
-| `action_items`      | `JSONB`              | 액션 아이템 목록                        |
-| `parent_chunk_ids`  | `INTEGER[]`          | 관련 부모 청크 ID 배열                  |
-| `created_at`        | `TIMESTAMP`          | 생성 시각                               |
-| `updated_at`        | `TIMESTAMP`          | 수정 시각                               |
+| Column              | Type                 | Nullable | Description                             |
+| ------------------- | -------------------- | -------- | --------------------------------------- |
+| `id`                | `SERIAL PRIMARY KEY` | ❌       | 고유 ID                                 |
+| `title`             | `VARCHAR(500)`       | ❌       | 행사명 (예: "2025 새내기 배움터")       |
+| `year`              | `INTEGER`            | ❌       | 행사 연도 (indexed)                     |
+| `event_date`        | `DATE`               | ✅       | 행사 일자                               |
+| `start_date`        | `DATE`               | ✅       | 시작일 (다일 행사)                      |
+| `end_date`          | `DATE`               | ✅       | 종료일                                  |
+| `category`          | `VARCHAR(100)`       | ✅       | 담당 국서 (문화국, 복지국 등) (indexed) |
+| `department`        | `VARCHAR(100)`       | ✅       | 세부 담당                               |
+| `status`            | `ENUM(EventStatus)`  | ❌       | planned/in_progress/completed/cancelled (indexed) |
+| `description`       | `TEXT`               | ✅       | 행사 설명                               |
+| `chunk_timeline`    | `JSONB`              | ✅       | 회의별 청크 ID 매핑                     |
+| `decisions_summary` | `JSONB`              | ✅       | 회의별 결정 사항 요약                   |
+| `action_items`      | `JSONB`              | ✅       | 액션 아이템 목록                        |
+| `parent_chunk_ids`  | `INTEGER[]`          | ✅       | 관련 부모 청크 ID 배열                  |
+| `child_chunk_ids`   | `INTEGER[]`          | ✅       | 관련 자식 청크 ID 배열                  |
+| `meta_data`         | `JSONB`              | ✅       | 추가 메타데이터                         |
+| `created_at`        | `TIMESTAMP`          | ❌       | 생성 시각 (auto)                        |
+| `updated_at`        | `TIMESTAMP`          | ❌       | 수정 시각 (auto)                        |
 
-### Relationships
+### EventStatus Enum
 
 ```python
-# Event → Chunks (N:M 관계 지원)
-related_chunks: Mapped[list["DocumentChunk"]] = relationship(
-    "DocumentChunk",
-    back_populates="related_event",
-    foreign_keys="DocumentChunk.related_event_id",
-)
+class EventStatus(str, Enum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
 ```
 
 ---
@@ -119,35 +154,160 @@ related_chunks: Mapped[list["DocumentChunk"]] = relationship(
 
 Google Drive에서 수집된 개별 문서의 메타데이터를 저장합니다.
 
-| Column                 | Type                  | Description                                      |
-| ---------------------- | --------------------- | ------------------------------------------------ |
-| `id`                   | `SERIAL PRIMARY KEY`  | 고유 ID                                          |
-| `event_id`             | `INTEGER FK`          | 연관 이벤트 **(nullable - chunk 레벨에서 결정)** |
-| `drive_id`             | `VARCHAR(255) UNIQUE` | Google Drive 파일 ID                             |
-| `drive_name`           | `VARCHAR(500)`        | 원본 파일명                                      |
-| `drive_path`           | `VARCHAR(1000)`       | 폴더 경로                                        |
-| `mime_type`            | `VARCHAR(255)`        | MIME 타입                                        |
-| `gcs_url`              | `TEXT`                | GCS 백업 URL                                     |
-| `doc_type`             | `ENUM`                | 파일 형식 (google_doc, pdf, docx 등)             |
-| `doc_category`         | `ENUM`                | 분류 (meeting_document, work_document, other)    |
-| `meeting_subtype`      | `ENUM`                | 회의 문서 세부 유형 (agenda, minutes, result)    |
-| `access_level`         | `INTEGER`             | 접근 권한 (1-4)                                  |
-| `standardized_name`    | `VARCHAR(500)`        | 표준화된 파일명                                  |
-| `time_decay_date`      | `DATE`                | 시간 가중치 기준일                               |
-| `department`           | `VARCHAR(100)`        | 담당 국서                                        |
-| `year`                 | `INTEGER`             | 문서 연도                                        |
-| `status`               | `ENUM`                | 처리 상태 (pending → completed)                  |
-| `raw_content`          | `TEXT`                | 원본 내용                                        |
-| `parsed_content`       | `TEXT`                | 파싱된 HTML                                      |
-| `preprocessed_content` | `TEXT`                | 전처리된 Markdown                                |
-| `metadata`             | `JSONB`               | 추가 메타데이터                                  |
-| `error_message`        | `TEXT`                | 오류 메시지                                      |
-| `processed_at`         | `TIMESTAMP`           | 처리 완료 시각                                   |
+| Column                 | Type                    | Nullable | Description                                      |
+| ---------------------- | ----------------------- | -------- | ------------------------------------------------ |
+| `id`                   | `SERIAL PRIMARY KEY`    | ❌       | 고유 ID                                          |
+| `event_id`             | `INTEGER FK`            | ✅       | 연관 이벤트 (chunk 레벨에서 결정 가능)           |
+| `drive_id`             | `VARCHAR(255) UNIQUE`   | ❌       | Google Drive 파일 ID (indexed)                   |
+| `drive_name`           | `VARCHAR(500)`          | ❌       | 원본 파일명                                      |
+| `drive_path`           | `VARCHAR(1000)`         | ✅       | 폴더 경로                                        |
+| `mime_type`            | `VARCHAR(255)`          | ✅       | MIME 타입                                        |
+| `gcs_url`              | `TEXT`                  | ✅       | GCS 백업 URL                                     |
+| `doc_type`             | `ENUM(DocumentType)`    | ❌       | 파일 형식 (indexed)                              |
+| `doc_category`         | `ENUM(DocumentCategory)`| ❌       | 분류 (indexed)                                   |
+| `meeting_subtype`      | `ENUM(MeetingSubtype)`  | ✅       | 회의 문서 세부 유형                              |
+| `access_level`         | `INTEGER`               | ❌       | 접근 권한 1-4 (default: 3, indexed)              |
+| `standardized_name`    | `VARCHAR(500)`          | ✅       | 표준화된 파일명                                  |
+| `time_decay_date`      | `DATE`                  | ✅       | 시간 가중치 기준일 (indexed)                     |
+| `department`           | `VARCHAR(100)`          | ✅       | 담당 국서                                        |
+| `year`                 | `INTEGER`               | ✅       | 문서 연도 (indexed)                              |
+| `status`               | `ENUM(DocumentStatus)`  | ❌       | 처리 상태 (indexed)                              |
+| `raw_content`          | `TEXT`                  | ✅       | 원본 내용                                        |
+| `parsed_content`       | `TEXT`                  | ✅       | 파싱된 HTML                                      |
+| `preprocessed_content` | `TEXT`                  | ✅       | 전처리된 Markdown                                |
+| `doc_metadata`         | `JSONB`                 | ✅       | 추가 메타데이터                                  |
+| `error_message`        | `TEXT`                  | ✅       | 오류 메시지                                      |
+| `processed_at`         | `TIMESTAMP`             | ✅       | 처리 완료 시각                                   |
+| `current_step`         | `INTEGER`               | ✅       | 현재 파이프라인 단계 (1-7)                       |
+| `created_at`           | `TIMESTAMP`             | ❌       | 생성 시각 (auto)                                 |
+| `updated_at`           | `TIMESTAMP`             | ❌       | 수정 시각 (auto)                                 |
 
-> [!NOTE]
-> `event_id`는 document 레벨에서 optional입니다. 실제 Event 연결은 Chunk 레벨에서 LLM이 안건을 분석하여 결정합니다.
+### DocumentType Enum
 
-### Access Level (접근 권한)
+```python
+class DocumentType(str, Enum):
+    GOOGLE_DOC = "google_doc"
+    GOOGLE_SHEET = "google_sheet"
+    GOOGLE_SLIDE = "google_slide"
+    PDF = "pdf"
+    DOCX = "docx"
+    XLSX = "xlsx"
+    PPTX = "pptx"
+    TXT = "txt"
+    OTHER = "other"
+```
+
+### DocumentCategory Enum
+
+```python
+class DocumentCategory(str, Enum):
+    MEETING_DOCUMENT = "meeting_document"  # 회의 서류
+    WORK_DOCUMENT = "work_document"        # 업무 서류
+    OTHER_DOCUMENT = "other_document"      # 기타
+```
+
+### MeetingSubtype Enum
+
+```python
+class MeetingSubtype(str, Enum):
+    AGENDA = "agenda"    # 안건지
+    MINUTES = "minutes"  # 속기록
+    RESULT = "result"    # 결과지
+```
+
+### DocumentStatus Enum
+
+```python
+class DocumentStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+```
+
+---
+
+## Document Chunks (문서 청크)
+
+Parent-Child 청킹 전략을 지원하는 벡터 임베딩 저장 테이블입니다.
+
+| Column                     | Type                 | Nullable | Description                          |
+| -------------------------- | -------------------- | -------- | ------------------------------------ |
+| `id`                       | `SERIAL PRIMARY KEY` | ❌       | 고유 ID                              |
+| `document_id`              | `INTEGER FK`         | ❌       | 원본 문서 (indexed)                  |
+| `parent_chunk_id`          | `INTEGER FK (self)`  | ✅       | 부모 청크 (계층 관계, indexed)       |
+| `related_event_id`         | `INTEGER FK`         | ✅       | 연관 이벤트 (indexed)                |
+| `inferred_event_title`     | `VARCHAR(500)`       | ✅       | LLM 추론 이벤트 제목                 |
+| `is_parent`                | `BOOLEAN`            | ❌       | 부모 청크 여부 (default: false, indexed) |
+| `chunk_index`              | `INTEGER`            | ❌       | 청크 순서                            |
+| `chunk_type`               | `VARCHAR(50)`        | ❌       | 청크 타입 (default: "text")          |
+| `content`                  | `TEXT`               | ❌       | 청크 텍스트 내용                     |
+| `parent_content`           | `TEXT`               | ✅       | 부모 청크 전체 내용 (검색용)         |
+| `section_header`           | `VARCHAR(500)`       | ✅       | 섹션 헤더 (## 안건명)                |
+| `embedding`                | `VECTOR(768)`        | ✅       | 벡터 임베딩 (Vertex AI)              |
+| `access_level`             | `INTEGER`            | ✅       | 접근 권한 1-4 (indexed)              |
+| `chunk_metadata`           | `JSONB`              | ✅       | 추가 메타데이터                      |
+| `token_count`              | `INTEGER`            | ✅       | 토큰 수                              |
+| `start_char`               | `INTEGER`            | ✅       | 시작 문자 위치                       |
+| `end_char`                 | `INTEGER`            | ✅       | 끝 문자 위치                         |
+| `created_at`               | `TIMESTAMP`          | ❌       | 생성 시각 (auto)                     |
+| `updated_at`               | `TIMESTAMP`          | ❌       | 수정 시각 (auto)                     |
+
+### 벡터 인덱스 (HNSW)
+
+```sql
+CREATE INDEX idx_chunks_embedding_hnsw
+ON document_chunks
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+
+---
+
+## Chat Logs (채팅 로그)
+
+채팅 로그 저장 (장기 기억/감사용)
+
+| Column                 | Type                 | Nullable | Description                          |
+| ---------------------- | -------------------- | -------- | ------------------------------------ |
+| `id`                   | `SERIAL PRIMARY KEY` | ❌       | 고유 ID                              |
+| `session_id`           | `VARCHAR(100)`       | ❌       | 세션 ID (indexed)                    |
+| `user_level`           | `INTEGER`            | ❌       | 사용자 접근 레벨 (default: 4, indexed) |
+| `user_query`           | `TEXT`               | ❌       | 사용자 질문                          |
+| `rewritten_query`      | `TEXT`               | ✅       | 재작성된 질문                        |
+| `ai_response`          | `TEXT`               | ❌       | AI 응답                              |
+| `retrieved_chunks`     | `JSONB`              | ✅       | 검색된 청크 목록                     |
+| `sources`              | `JSONB`              | ✅       | 출처 정보                            |
+| `turn_index`           | `INTEGER`            | ❌       | 대화 턴 순서 (default: 0, indexed)   |
+| `latency_ms`           | `INTEGER`            | ✅       | 전체 응답 지연시간                   |
+| `retrieval_latency_ms` | `INTEGER`            | ✅       | 검색 지연시간                        |
+| `generation_latency_ms`| `INTEGER`            | ✅       | 생성 지연시간                        |
+| `request_metadata`     | `JSONB`              | ✅       | 요청 메타데이터                      |
+| `created_at`           | `TIMESTAMP`          | ❌       | 생성 시각 (auto)                     |
+| `updated_at`           | `TIMESTAMP`          | ❌       | 수정 시각 (auto)                     |
+
+---
+
+## References (참조 파일)
+
+Google Forms 등 직접 파싱 불가능한 외부 링크 저장
+
+| Column          | Type                 | Nullable | Description                  |
+| --------------- | -------------------- | -------- | ---------------------------- |
+| `id`            | `SERIAL PRIMARY KEY` | ❌       | 고유 ID                      |
+| `event_id`      | `INTEGER FK`         | ✅       | 연관 이벤트 (indexed)        |
+| `description`   | `TEXT`               | ❌       | 설명                         |
+| `file_link`     | `TEXT`               | ❌       | 파일/폼 링크                 |
+| `file_type`     | `VARCHAR(50)`        | ✅       | 파일 타입                    |
+| `file_name`     | `VARCHAR(500)`       | ✅       | 파일명                       |
+| `access_level`  | `INTEGER`            | ❌       | 접근 권한 (default: 3)       |
+| `file_metadata` | `JSONB`              | ✅       | 추가 메타데이터              |
+| `created_at`    | `TIMESTAMP`          | ❌       | 생성 시각 (auto)             |
+| `updated_at`    | `TIMESTAMP`          | ❌       | 수정 시각 (auto)             |
+
+---
+
+## Access Level (접근 권한)
 
 | Level | Description         | 대상          |
 | ----- | ------------------- | ------------- |
@@ -158,140 +318,30 @@ Google Drive에서 수집된 개별 문서의 메타데이터를 저장합니다
 
 ---
 
-## Document Chunks (문서 청크)
+## N:M 관계: Event ↔ Chunk
 
-Parent-Child 청킹 전략을 지원하는 벡터 임베딩 저장 테이블입니다.
-
-| Column                     | Type                 | Description                          |
-| -------------------------- | -------------------- | ------------------------------------ |
-| `id`                       | `SERIAL PRIMARY KEY` | 고유 ID                              |
-| `document_id`              | `INTEGER FK`         | 원본 문서                            |
-| `parent_chunk_id`          | `INTEGER FK (self)`  | 부모 청크 (계층 관계)                |
-| **`related_event_id`**     | `INTEGER FK`         | **🆕 연관 이벤트 (chunk 레벨 매핑)** |
-| **`inferred_event_title`** | `VARCHAR(500)`       | **🆕 LLM 추론 이벤트 제목**          |
-| `is_parent`                | `BOOLEAN`            | 부모 청크 여부                       |
-| `chunk_index`              | `INTEGER`            | 청크 순서                            |
-| `chunk_type`               | `VARCHAR(50)`        | text, table, image_caption           |
-| `content`                  | `TEXT`               | 청크 내용                            |
-| `parent_content`           | `TEXT`               | 부모 청크 전체 내용                  |
-| `section_header`           | `VARCHAR(500)`       | 섹션 헤더 (안건명)                   |
-| `embedding`                | `VECTOR(768)`        | Vertex AI 임베딩                     |
-| `access_level`             | `INTEGER`            | 접근 권한 (문서 상속)                |
-| `metadata`                 | `JSONB`              | 추가 메타데이터                      |
-| `token_count`              | `INTEGER`            | 토큰 수                              |
-
-### ⭐ N:M Relationship (Chunk-Level Event Mapping)
-
-하나의 회의록에 여러 행사에 대한 안건이 포함될 수 있습니다:
-
-```
-📄 [안건지] 제7차 국장단회의.docx
-├── 🔷 안건 1: 새터 예산 검토 → Event: "2025 새내기 배움터"
-├── 🔷 안건 2: 축제 가수 섭외 → Event: "2025 대동제"
-└── 🔷 안건 3: MT 장소 선정 → Event: "2025 봄 MT"
-```
-
-**처리 흐름:**
-
-1. Step 5 (Chunking): 안건별로 Parent chunk 생성
-2. Step 6 (Enrichment): LLM이 안건 내용 분석 → `inferred_event_title` 저장
-3. Event Matching: 기존 Event 검색 → `related_event_id` 연결
-
-### Parent-Child Chunking Strategy
-
-```
-# 보고안건 (Parent: 전체 보고안건 섹션)
-    ├── Child 1: "축제 준비가 순조롭게..."
-    ├── Child 2: "현재까지 진행된 사항..."
-    └── Child 3: "예산 집행률은..."
-
-## 논의안건 1. 축제 가수 섭외 (Parent: 개별 안건)
-    ├── Child 1: "가수 후보 리스트..."
-    ├── Child 2: "예산은 300만원으로..."
-    └── Child 3: "투표 결과..."
-```
-
-### HNSW Index
-
-```sql
-CREATE INDEX idx_chunks_embedding_hnsw
-ON document_chunks
-USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-
--- 🆕 Event 조회 최적화
-CREATE INDEX idx_chunks_related_event
-ON document_chunks (related_event_id)
-WHERE related_event_id IS NOT NULL;
-```
-
----
-
-## Chat Logs (대화 기록) 🆕
-
-RAG Chat 대화 기록을 저장합니다. Redis로 단기 컨텍스트, DB로 장기 분석용.
-
-| Column                  | Type                 | Description            |
-| ----------------------- | -------------------- | ---------------------- |
-| `id`                    | `SERIAL PRIMARY KEY` | 고유 ID                |
-| `session_id`            | `VARCHAR(100)`       | 세션 ID (indexed)      |
-| `user_level`            | `INTEGER`            | 사용자 접근 레벨 (1-4) |
-| `user_query`            | `TEXT`               | 원본 질문              |
-| `rewritten_query`       | `TEXT`               | 재작성된 질문          |
-| `ai_response`           | `TEXT`               | AI 응답                |
-| `retrieved_chunks`      | `JSONB`              | 검색된 청크 정보       |
-| `sources`               | `JSONB`              | 인용 출처 목록         |
-| `turn_index`            | `INTEGER`            | 대화 턴 인덱스         |
-| `latency_ms`            | `INTEGER`            | 전체 응답 시간         |
-| `retrieval_latency_ms`  | `INTEGER`            | 검색 시간              |
-| `generation_latency_ms` | `INTEGER`            | 생성 시간              |
-| `request_metadata`      | `JSONB`              | 요청 메타데이터        |
-| `created_at`            | `TIMESTAMP`          | 생성 시각              |
-
-**활용 목적:**
-
-- 대화 흐름 분석 및 개선
-- 자주 묻는 질문 파악
-- 응답 품질 모니터링
-- 사용자 행동 분석
-
----
-
-## References (참조 링크)
-
-개인정보가 포함된 민감한 파일의 링크만 저장합니다 (임베딩 X).
-
-| Column         | Type                 | Description                 |
-| -------------- | -------------------- | --------------------------- |
-| `id`           | `SERIAL PRIMARY KEY` | 고유 ID                     |
-| `event_id`     | `INTEGER FK`         | 연관 이벤트                 |
-| `description`  | `TEXT`               | 파일 설명                   |
-| `file_link`    | `TEXT`               | 파일 링크 (Google Forms 등) |
-| `file_type`    | `VARCHAR(50)`        | gform, gsheet 등            |
-| `file_name`    | `VARCHAR(500)`       | 파일명                      |
-| `access_level` | `INTEGER`            | 접근 권한                   |
-| `metadata`     | `JSONB`              | 추가 메타데이터             |
-
-**예시 사용처:**
-
-- Google Forms (행사 신청서)
-- 학생 명단이 포함된 스프레드시트
-- 개인정보가 포함된 자료
-
----
-
-## Alembic Migration
-
-최신 마이그레이션: `001_chunk_event_mapping.py`
+> [!IMPORTANT]
+> Event-Document는 1:N 관계지만, **Event-Chunk는 N:M** 처럼 동작합니다.
+> 하나의 문서(예: 속기록)에 여러 행사 관련 안건이 포함될 수 있기 때문입니다.
 
 ```python
-# 추가된 컬럼
-op.add_column('document_chunks',
-    sa.Column('related_event_id', sa.Integer(),
-              sa.ForeignKey('events.id'), nullable=True))
-op.add_column('document_chunks',
-    sa.Column('inferred_event_title', sa.String(500), nullable=True))
+# Event 모델
+related_chunks = relationship(
+    "DocumentChunk",
+    back_populates="related_event",
+    foreign_keys="DocumentChunk.related_event_id",
+)
 
-# 신규 테이블
-op.create_table('chat_logs', ...)
+# DocumentChunk 모델
+related_event_id = Column(Integer, ForeignKey("events.id"), nullable=True)
+related_event = relationship("Event", back_populates="related_chunks")
 ```
+
+---
+
+## 변경 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|------|------|-----------|
+| 1.0.0 | 2025-01-31 | 초기 작성 |
+| 2.0.0 | 2026-02-02 | 실제 코드 기반 전체 업데이트, ChatLog 추가 컬럼 반영, 인덱스 정보 추가 |

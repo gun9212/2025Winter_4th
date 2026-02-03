@@ -1,5 +1,6 @@
 """Google Docs service for document operations."""
 
+import os
 from typing import Any
 
 from googleapiclient.discovery import build
@@ -7,19 +8,51 @@ from googleapiclient.discovery import build
 from app.core.security import get_google_credentials
 
 
+def _get_credentials():
+    """
+    Get Google credentials - prefers OAuth for user operations, 
+    falls back to service account for read-only.
+    """
+    # Check if OAuth is configured and available
+    use_oauth = os.environ.get("USE_OAUTH", "false").lower() == "true"
+    
+    if use_oauth:
+        try:
+            from app.core.oauth import get_oauth_credentials
+            return get_oauth_credentials()
+        except Exception:
+            pass  # Fall back to service account
+    
+    return get_google_credentials()
+
+
 class GoogleDocsService:
     """Service for interacting with Google Docs API."""
 
-    def __init__(self) -> None:
+    def __init__(self, use_oauth: bool = False) -> None:
         self._service = None
+        self._use_oauth = use_oauth or os.environ.get("USE_OAUTH", "false").lower() == "true"
 
     @property
     def service(self):
         """Get or create Docs service instance."""
         if self._service is None:
-            credentials = get_google_credentials()
+            if self._use_oauth:
+                from app.core.oauth import get_oauth_credentials
+                credentials = get_oauth_credentials()
+            else:
+                credentials = get_google_credentials()
             self._service = build("docs", "v1", credentials=credentials)
         return self._service
+    
+    def _get_drive_service(self):
+        """Get Drive API service with same credentials."""
+        if self._use_oauth:
+            from app.core.oauth import get_oauth_credentials
+            credentials = get_oauth_credentials()
+        else:
+            credentials = get_google_credentials()
+        return build("drive", "v3", credentials=credentials)
 
     def get_document(self, document_id: str) -> dict[str, Any]:
         """
@@ -142,24 +175,31 @@ class GoogleDocsService:
 
         return self.batch_update(document_id, requests)
 
-    def copy_document(self, document_id: str, new_title: str) -> dict[str, Any]:
+    def copy_document(
+        self, document_id: str, new_title: str, parent_folder_id: str | None = None
+    ) -> dict[str, Any]:
         """
-        Create a copy of a document (uses Drive API).
+        Create a copy of a document using Drive API copy.
+
+        When USE_OAUTH=true, uses user's credentials (user's quota).
+        Otherwise uses service account (may hit quota issues).
 
         Args:
             document_id: The source document ID.
             new_title: Title for the new document.
+            parent_folder_id: Folder ID where the doc should be created.
 
         Returns:
-            New document metadata.
+            New document metadata with 'id' key.
         """
-        from googleapiclient.discovery import build
+        drive_service = self._get_drive_service()
 
-        credentials = get_google_credentials()
-        drive_service = build("drive", "v3", credentials=credentials)
+        body = {"name": new_title}
+        if parent_folder_id:
+            body["parents"] = [parent_folder_id]
 
-        return (
-            drive_service.files()
-            .copy(fileId=document_id, body={"name": new_title})
-            .execute()
-        )
+        return drive_service.files().copy(
+            fileId=document_id,
+            body=body,
+            fields="id, name"
+        ).execute()

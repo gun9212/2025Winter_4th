@@ -1,13 +1,31 @@
 /**
+ * ========================================
  * Council-AI Google Apps Script
  * 학생회 업무 자동화 사이드바 애드온
+ * Version: 2.0.0
+ * ========================================
  */
 
-// Backend API 설정
-const CONFIG = {
-  API_BASE_URL: 'https://YOUR_BACKEND_URL/api/v1',
-  API_KEY: PropertiesService.getScriptProperties().getProperty('API_KEY') || ''
-};
+// ============================================
+// 전역 설정
+// ============================================
+
+/**
+ * 설정값을 가져옵니다.
+ * @returns {Object} 설정 객체
+ */
+function getConfig() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    API_BASE_URL: props.getProperty('API_BASE_URL') || 'http://localhost:8000/api/v1',
+    API_KEY: props.getProperty('API_KEY') || '',
+    PICKER_API_KEY: props.getProperty('PICKER_API_KEY') || ''
+  };
+}
+
+// ============================================
+// 문서 메뉴 및 사이드바
+// ============================================
 
 /**
  * 문서 열기 시 메뉴 추가
@@ -15,59 +33,91 @@ const CONFIG = {
 function onOpen() {
   DocumentApp.getUi()
     .createAddonMenu()
-    .addItem('사이드바 열기', 'showSidebar')
+    .addItem('🚀 사이드바 열기', 'showSidebar')
     .addSeparator()
-    .addItem('회의록 생성', 'showMinutesDialog')
-    .addItem('지식 검색', 'showSearchDialog')
-    .addItem('일정 추출', 'showCalendarDialog')
+    .addItem('⚙️ 설정', 'showSettingsDialog')
     .addToUi();
 }
 
 /**
- * 설치 시 호출
+ * 애드온 설치 시 호출
  */
 function onInstall() {
   onOpen();
 }
 
 /**
+ * 홈페이지 트리거 (Add-on용)
+ */
+function onHomepage() {
+  return createHomepageCard();
+}
+
+/**
+ * 파일 스코프 승인 후 트리거
+ */
+function onFileScopeGranted() {
+  return createHomepageCard();
+}
+
+/**
+ * 홈페이지 카드 생성
+ */
+function createHomepageCard() {
+  const card = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle('Council-AI'))
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(
+          CardService.newTextButton()
+            .setText('사이드바 열기')
+            .setOnClickAction(CardService.newAction().setFunctionName('showSidebar'))
+        )
+    )
+    .build();
+  return card;
+}
+
+/**
  * 사이드바 표시
  */
 function showSidebar() {
-  const html = HtmlService.createHtmlOutputFromFile('Sidebar')
+  const html = HtmlService.createTemplateFromFile('Sidebar')
+    .evaluate()
     .setTitle('Council-AI')
-    .setWidth(350);
+    .setWidth(380);
   DocumentApp.getUi().showSidebar(html);
 }
 
 /**
- * 회의록 다이얼로그 표시
+ * 설정 다이얼로그 표시
  */
-function showMinutesDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setWidth(400)
-    .setHeight(500);
-  DocumentApp.getUi().showModalDialog(html, '회의록 자동 생성');
+function showSettingsDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('Settings')
+    .setWidth(450)
+    .setHeight(400);
+  DocumentApp.getUi().showModalDialog(html, '⚙️ Council-AI 설정');
 }
 
 /**
- * 검색 다이얼로그 표시
+ * HTML 파일 포함 (템플릿용)
+ * @param {string} filename - 포함할 파일명
+ * @returns {string} HTML 콘텐츠
  */
-function showSearchDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setWidth(400)
-    .setHeight(500);
-  DocumentApp.getUi().showModalDialog(html, '지식 DB 검색');
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// ============================================
+// 사용자 정보
+// ============================================
+
 /**
- * 캘린더 다이얼로그 표시
+ * 현재 사용자 이메일 가져오기
+ * @returns {string} 이메일
  */
-function showCalendarDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setWidth(400)
-    .setHeight(500);
-  DocumentApp.getUi().showModalDialog(html, '일정 추출');
+function getCurrentUserEmail() {
+  return Session.getActiveUser().getEmail();
 }
 
 /**
@@ -75,7 +125,17 @@ function showCalendarDialog() {
  * @returns {string} 문서 ID
  */
 function getCurrentDocumentId() {
-  return DocumentApp.getActiveDocument().getId();
+  const doc = DocumentApp.getActiveDocument();
+  return doc ? doc.getId() : null;
+}
+
+/**
+ * 현재 문서 이름 가져오기
+ * @returns {string} 문서 이름
+ */
+function getCurrentDocumentName() {
+  const doc = DocumentApp.getActiveDocument();
+  return doc ? doc.getName() : null;
 }
 
 /**
@@ -84,159 +144,195 @@ function getCurrentDocumentId() {
  */
 function getCurrentDocumentText() {
   const doc = DocumentApp.getActiveDocument();
-  return doc.getBody().getText();
+  return doc ? doc.getBody().getText() : '';
+}
+
+// ============================================
+// Google Picker 관련
+// ============================================
+
+/**
+ * OAuth 토큰 가져오기 (Picker용)
+ * @returns {string} OAuth 토큰
+ */
+function getOAuthToken() {
+  return ScriptApp.getOAuthToken();
 }
 
 /**
- * 백엔드 API 호출
- * @param {string} endpoint - API 엔드포인트
- * @param {string} method - HTTP 메서드
- * @param {Object} payload - 요청 데이터
- * @returns {Object} API 응답
+ * Picker API 설정 가져오기
+ * @returns {Object} Picker 설정
  */
-function callBackendAPI(endpoint, method, payload) {
-  const url = CONFIG.API_BASE_URL + endpoint;
-
-  const options = {
-    method: method,
-    contentType: 'application/json',
-    headers: {
-      'X-API-Key': CONFIG.API_KEY
-    },
-    muteHttpExceptions: true
+function getPickerConfig() {
+  const config = getConfig();
+  return {
+    developerKey: config.PICKER_API_KEY,
+    oauthToken: ScriptApp.getOAuthToken(),
+    appId: ScriptApp.getProjectKey()
   };
+}
 
-  if (payload && (method === 'POST' || method === 'PUT')) {
-    options.payload = JSON.stringify(payload);
-  }
+// ============================================
+// 상태 저장/복원 (PropertiesService)
+// ============================================
 
+/**
+ * 사용자 설정 저장
+ * @param {string} key - 키
+ * @param {string} value - 값
+ */
+function saveUserProperty(key, value) {
+  PropertiesService.getUserProperties().setProperty(key, value);
+}
+
+/**
+ * 사용자 설정 가져오기
+ * @param {string} key - 키
+ * @returns {string} 값
+ */
+function getUserProperty(key) {
+  return PropertiesService.getUserProperties().getProperty(key);
+}
+
+/**
+ * 사용자 설정 삭제
+ * @param {string} key - 키
+ */
+function deleteUserProperty(key) {
+  PropertiesService.getUserProperties().deleteProperty(key);
+}
+
+/**
+ * 모든 사용자 설정 가져오기
+ * @returns {Object} 모든 설정
+ */
+function getAllUserProperties() {
+  return PropertiesService.getUserProperties().getProperties();
+}
+
+/**
+ * 채팅 세션 ID 저장
+ * @param {string} sessionId - 세션 ID
+ */
+function saveChatSessionId(sessionId) {
+  saveUserProperty('chat_session_id', sessionId);
+}
+
+/**
+ * 채팅 세션 ID 가져오기
+ * @returns {string} 세션 ID
+ */
+function getChatSessionId() {
+  return getUserProperty('chat_session_id');
+}
+
+// ============================================
+// 관리자 설정 (ScriptProperties)
+// ============================================
+
+/**
+ * API 설정 저장 (관리자용)
+ * @param {Object} settings - 설정 객체
+ * @returns {Object} 결과
+ */
+function saveAdminSettings(settings) {
   try {
-    const response = UrlFetchApp.fetch(url, options);
-    const responseCode = response.getResponseCode();
-    const responseText = response.getContentText();
-
-    if (responseCode >= 200 && responseCode < 300) {
-      return {
-        success: true,
-        data: JSON.parse(responseText)
-      };
-    } else {
-      return {
-        success: false,
-        error: responseText,
-        statusCode: responseCode
-      };
+    const props = PropertiesService.getScriptProperties();
+    
+    if (settings.apiBaseUrl) {
+      props.setProperty('API_BASE_URL', settings.apiBaseUrl);
     }
+    if (settings.apiKey) {
+      props.setProperty('API_KEY', settings.apiKey);
+    }
+    if (settings.pickerApiKey) {
+      props.setProperty('PICKER_API_KEY', settings.pickerApiKey);
+    }
+    
+    return { success: true, message: '설정이 저장되었습니다.' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 관리자 설정 가져오기
+ * @returns {Object} 설정 (마스킹됨)
+ */
+function getAdminSettings() {
+  const config = getConfig();
+  return {
+    apiBaseUrl: config.API_BASE_URL,
+    apiKey: config.API_KEY ? '********' + config.API_KEY.slice(-4) : '',
+    pickerApiKey: config.PICKER_API_KEY ? '********' + config.PICKER_API_KEY.slice(-4) : '',
+    hasApiKey: !!config.API_KEY,
+    hasPickerApiKey: !!config.PICKER_API_KEY
+  };
+}
+
+// ============================================
+// 템플릿 검사 (클라이언트 사이드 지원)
+// ============================================
+
+/**
+ * 문서에서 Placeholder 추출
+ * @param {string} docId - Google Docs ID
+ * @returns {Object} Placeholder 목록
+ */
+function extractPlaceholders(docId) {
+  try {
+    const doc = DocumentApp.openById(docId);
+    const text = doc.getBody().getText();
+    
+    // {{...}} 패턴 찾기
+    const regex = /\{\{([^}]+)\}\}/g;
+    const placeholders = [];
+    let match;
+    
+    while ((match = regex.exec(text)) !== null) {
+      placeholders.push({
+        full: match[0],
+        name: match[1].trim(),
+        index: match.index
+      });
+    }
+    
+    // 중복 제거
+    const uniqueNames = [...new Set(placeholders.map(p => p.name))];
+    
+    return {
+      success: true,
+      placeholders: placeholders,
+      uniqueNames: uniqueNames,
+      count: uniqueNames.length,
+      documentName: doc.getName()
+    };
   } catch (error) {
     return {
       success: false,
-      error: error.toString()
+      error: error.message
     };
   }
 }
 
-/**
- * 회의록 처리 요청
- * @param {string} transcript - 속기록/녹취록 텍스트
- * @returns {Object} 처리 결과
- */
-function processMinutes(transcript) {
-  const documentId = getCurrentDocumentId();
+// ============================================
+// 문서 URL 생성
+// ============================================
 
-  return callBackendAPI('/minutes/process', 'POST', {
-    agenda_doc_id: documentId,
-    transcript: transcript
-  });
+/**
+ * Google Docs URL 생성
+ * @param {string} docId - 문서 ID
+ * @returns {string} URL
+ */
+function getDocumentUrl(docId) {
+  return `https://docs.google.com/document/d/${docId}/edit`;
 }
 
 /**
- * 회의록 처리 상태 확인
- * @param {string} taskId - 작업 ID
- * @returns {Object} 상태 정보
+ * Google Drive 폴더 URL 생성
+ * @param {string} folderId - 폴더 ID
+ * @returns {string} URL
  */
-function getMinutesStatus(taskId) {
-  return callBackendAPI('/minutes/' + taskId + '/status', 'GET', null);
-}
-
-/**
- * RAG 검색 수행
- * @param {string} query - 검색어
- * @param {number} topK - 결과 개수
- * @returns {Object} 검색 결과
- */
-function searchKnowledge(query, topK) {
-  return callBackendAPI('/rag/search', 'POST', {
-    query: query,
-    top_k: topK || 5,
-    generate_answer: true
-  });
-}
-
-/**
- * 문서에서 일정 추출
- * @returns {Object} 추출된 일정 목록
- */
-function extractCalendarEvents() {
-  const text = getCurrentDocumentText();
-
-  return callBackendAPI('/calendar/extract', 'POST', {
-    text: text
-  });
-}
-
-/**
- * 캘린더에 이벤트 생성
- * @param {Object} event - 이벤트 정보
- * @returns {Object} 생성 결과
- */
-function createCalendarEvent(event) {
-  return callBackendAPI('/calendar/events', 'POST', event);
-}
-
-/**
- * 문서에 텍스트 삽입
- * @param {string} text - 삽입할 텍스트
- * @param {boolean} atCursor - 커서 위치에 삽입 여부
- */
-function insertTextToDocument(text, atCursor) {
-  const doc = DocumentApp.getActiveDocument();
-  const body = doc.getBody();
-
-  if (atCursor) {
-    const cursor = doc.getCursor();
-    if (cursor) {
-      cursor.insertText(text);
-    } else {
-      body.appendParagraph(text);
-    }
-  } else {
-    body.appendParagraph(text);
-  }
-}
-
-/**
- * 검색 결과를 문서에 삽입
- * @param {string} answer - AI 생성 답변
- * @param {Array} sources - 소스 문서 목록
- */
-function insertSearchResult(answer, sources) {
-  const doc = DocumentApp.getActiveDocument();
-  const body = doc.getBody();
-
-  // 답변 삽입
-  const answerPara = body.appendParagraph(answer);
-  answerPara.setHeading(DocumentApp.ParagraphHeading.NORMAL);
-
-  // 소스 삽입
-  if (sources && sources.length > 0) {
-    const sourcePara = body.appendParagraph('\n참고 문서:');
-    sourcePara.setBold(true);
-
-    sources.forEach(function(source) {
-      const link = body.appendParagraph('• ' + source.document_name);
-      if (source.url) {
-        link.setLinkUrl(source.url);
-      }
-    });
-  }
+function getFolderUrl(folderId) {
+  return `https://drive.google.com/drive/folders/${folderId}`;
 }

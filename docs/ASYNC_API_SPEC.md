@@ -1,8 +1,7 @@
 # Council-AI 비동기 API 기술 명세서
 
-> **작성일:** 2026-01-31  
-> **버전:** 1.0  
-> **담당:** Backend Lead Developer
+> **Version:** 2.0.0  
+> **Last Updated:** 2026-02-02
 
 이 문서는 FastAPI와 Celery 간의 비동기 통신 규격을 정의합니다.
 
@@ -20,19 +19,20 @@ sequenceDiagram
     participant Celery Worker
     participant PostgreSQL
 
-    Client->>FastAPI: POST /api/v1/rag/ingest/folder
+    Client->>FastAPI: POST /api/v1/minutes/generate
     FastAPI->>Redis: Task 메시지 Push (JSON)
     FastAPI-->>Client: 202 Accepted + task_id
 
     Note over Client: Polling 시작
 
     Celery Worker->>Redis: Task 메시지 Pop
-    Celery Worker->>PostgreSQL: 문서 처리 & 저장
+    Celery Worker->>PostgreSQL: 데이터 처리 & 저장
     Celery Worker->>Redis: 상태/결과 저장
 
-    loop 폴링 (5~10초 간격)
+    loop 폴링 (2~5초 간격)
         Client->>FastAPI: GET /api/v1/tasks/{task_id}
         FastAPI->>Redis: AsyncResult 조회
+        Redis-->>FastAPI: 상태/진행률/결과
         FastAPI-->>Client: 상태/진행률/결과
     end
 ```
@@ -41,196 +41,292 @@ sequenceDiagram
 
 | 컴포넌트          | 역할                           | 기술 스택                |
 | ----------------- | ------------------------------ | ------------------------ |
-| **FastAPI**       | API Gateway, Task 트리거       | Python 3.11+             |
+| **FastAPI**       | API Gateway, Task 트리거       | Python 3.11+, Uvicorn    |
 | **Redis**         | Message Broker, Result Backend | Redis 7                  |
 | **Celery Worker** | 비동기 태스크 실행             | Celery 5.x               |
 | **PostgreSQL**    | 데이터 영속화                  | PostgreSQL 16 + pgvector |
 
 ---
 
-## 2. API 명세
+## 2. Celery Tasks 목록
 
-### 2.1 태스크 트리거: `POST /api/v1/rag/ingest/folder`
+### 2.1 Pipeline Tasks (`app.tasks.pipeline`)
 
-Google Drive 폴더의 문서를 수집하고 RAG 파이프라인을 실행합니다.
+| Task Name | Description | Rate Limit |
+|-----------|-------------|------------|
+| `run_full_pipeline` | 단일 문서 7단계 RAG 파이프라인 | 5/m |
+| `ingest_folder` | Google Drive 폴더 수집 + 파이프라인 트리거 | - |
+| `reprocess_document` | 문서 재처리 | - |
+| `create_hnsw_index` | HNSW 벡터 인덱스 생성 | - |
 
-#### Request
+### 2.2 Feature Tasks (`app.tasks.features`)
 
-```http
-POST /api/v1/rag/ingest/folder HTTP/1.1
-Host: api.council-ai.com
-Content-Type: application/json
-X-API-Key: your-api-key
+| Task Name | Description | Max Retries |
+|-----------|-------------|-------------|
+| `generate_minutes` | Smart Minutes 결과지 생성 | 3 |
+| `sync_calendar` | 캘린더 동기화 (Deprecated) | 3 |
+| `generate_handover` | 인수인계서 생성 | 2 |
 
-{
-    "folder_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-    "options": {
-        "is_privacy_sensitive": false,
-        "recursive": true,
-        "file_types": ["google_doc", "pdf"],
-        "exclude_patterns": ["*.tmp", "~*"]
-    },
-    "user_level": 2
-}
-```
+### 2.3 Document Tasks (`app.tasks.document`)
 
-#### Response (202 Accepted)
+| Task Name | Description |
+|-----------|-------------|
+| `ingest_folder` | 폴더 수집 (레거시) |
+| `process_document` | 단일 문서 처리 |
+| `process_minutes` | 회의록 처리 |
 
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "문서 수집이 시작되었습니다. Event 매핑은 청크 수준에서 결정됩니다.",
-  "documents_found": 0
-}
-```
+### 2.4 Embedding Tasks (`app.tasks.embedding`)
 
-#### Error Responses
-
-| Status | 설명                | 원인               |
-| ------ | ------------------- | ------------------ |
-| 401    | Unauthorized        | API 키 누락/잘못됨 |
-| 422    | Validation Error    | 잘못된 요청 형식   |
-| 503    | Service Unavailable | Redis 연결 실패    |
+| Task Name | Description |
+|-----------|-------------|
+| `test_celery_task` | Celery 연결 테스트 |
+| `embed_documents_task` | 문서 임베딩 생성 |
 
 ---
 
-### 2.2 태스크 상태 조회: `GET /api/v1/tasks/{task_id}`
+## 3. 태스크별 상세 명세
 
-태스크의 현재 상태, 진행률, 결과를 조회합니다.
-
-#### Request
-
-```http
-GET /api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 HTTP/1.1
-Host: api.council-ai.com
-X-API-Key: your-api-key
-```
-
-#### Response 예시 (상태별)
-
-##### PENDING (대기 중)
-
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "PENDING",
-  "progress": 0,
-  "result": null,
-  "error": null,
-  "started_at": null,
-  "completed_at": null,
-  "task_name": null
-}
-```
-
-##### PROGRESS (진행 중)
-
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "PROGRESS",
-  "progress": 65,
-  "result": null,
-  "error": null,
-  "started_at": "2026-01-31T17:30:00+09:00",
-  "completed_at": null,
-  "task_name": "app.tasks.pipeline.ingest_folder"
-}
-```
-
-##### SUCCESS (완료)
-
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "SUCCESS",
-  "progress": 100,
-  "result": {
-    "output_doc_id": null,
-    "output_doc_link": null,
-    "items_processed": 15,
-    "events_created": null,
-    "documents_processed": 15,
-    "chunks_created": 142
-  },
-  "error": null,
-  "started_at": "2026-01-31T17:30:00+09:00",
-  "completed_at": "2026-01-31T17:35:42+09:00",
-  "task_name": "app.tasks.pipeline.ingest_folder"
-}
-```
-
-##### FAILURE (실패)
-
-```json
-{
-  "task_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "FAILURE",
-  "progress": 0,
-  "result": null,
-  "error": "Upstage API rate limit exceeded (429)",
-  "started_at": "2026-01-31T17:30:00+09:00",
-  "completed_at": null,
-  "task_name": "app.tasks.pipeline.ingest_folder"
-}
-```
-
----
-
-### 2.3 태스크 취소: `DELETE /api/v1/tasks/{task_id}`
-
-대기 중이거나 실행 중인 태스크를 취소합니다.
-
-#### Request
-
-```http
-DELETE /api/v1/tasks/550e8400-e29b-41d4-a716-446655440000 HTTP/1.1
-Host: api.council-ai.com
-X-API-Key: your-api-key
-```
-
-#### Response
-
-- **204 No Content**: 취소 성공 또는 이미 완료된 태스크 (멱등성)
-- **503 Service Unavailable**: Redis 연결 실패
-
----
-
-## 3. 개발자 가이드
-
-### 3.1 Pydantic 모델 직렬화
-
-> ⚠️ **중요:** Celery는 Pydantic 모델을 직접 전달할 수 없습니다.
+### 3.1 generate_minutes (Smart Minutes)
 
 ```python
-# ❌ 잘못된 방법
-task.delay(options=request.options)  # TypeError!
-
-# ✅ 올바른 방법
-task.delay(options=request.options.model_dump())  # dict로 변환
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def generate_minutes(
+    self,
+    agenda_doc_id: str,           # 안건지 Google Docs ID
+    transcript_doc_id: str | None, # 속기록 Google Docs ID
+    transcript_text: str | None,   # 속기록 텍스트 (대안)
+    template_doc_id: str | None,   # 결과 템플릿 ID
+    meeting_name: str,             # 회의명
+    meeting_date: str | None,      # 회의일자
+    output_folder_id: str | None,  # 출력 폴더 ID
+) -> dict:
+    ...
 ```
 
-### 3.2 커스텀 진행률 보고
+**처리 단계:**
+1. 속기록 로드 (Google Docs API or 텍스트)
+2. 헤더 기반 섹션 분할 (`split_by_headers`)
+3. 각 섹션 Gemini로 요약
+4. 안건지 복사하여 결과 문서 생성
+5. Placeholder 치환 (`{{report_N_result}}` 등)
 
-태스크 내에서 진행률을 보고하려면 `self.update_state()`를 사용합니다:
+**반환값:**
+```json
+{
+  "status": "SUCCESS",
+  "output_doc_id": "1newDocId...",
+  "output_doc_link": "https://docs.google.com/...",
+  "meeting_name": "제12차 운영위원회",
+  "agenda_summaries": [...],
+  "items_processed": 5,
+  "decisions_extracted": 3,
+  "action_items_extracted": 7
+}
+```
+
+### 3.2 generate_handover (인수인계서)
+
+```python
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def generate_handover(
+    self,
+    target_year: int,              # 대상 연도
+    department: str | None,        # 부서 필터
+    target_folder_id: str | None,  # 출력 폴더 ID
+    doc_title: str | None,         # 문서 제목
+    include_event_summaries: bool, # 행사 요약 포함
+    include_insights: bool,        # 인사이트 포함
+    include_statistics: bool,      # 통계 포함
+) -> dict:
+    ...
+```
+
+### 3.3 ingest_folder (문서 수집)
+
+```python
+@shared_task(bind=True)
+def ingest_folder(
+    self,
+    drive_folder_id: str,          # Google Drive 폴더 ID
+    options: dict | None,          # 수집 옵션
+) -> dict:
+    ...
+```
+
+---
+
+## 4. 진행률 보고 (Progress Reporting)
+
+### 4.1 update_state 사용법
 
 ```python
 @shared_task(bind=True)
 def my_task(self, items):
     total = len(items)
     for i, item in enumerate(items):
-        # 항목 처리...
-
         # 진행률 업데이트
         self.update_state(
             state="PROGRESS",
-            meta={"progress": int((i + 1) / total * 100)}
+            meta={
+                "progress": int((i + 1) / total * 100),
+                "step": f"Processing item {i + 1}/{total}",
+                "current_item": item.name,
+            }
         )
-
+        process(item)
+    
     return {"status": "success", "items_processed": total}
 ```
 
-### 3.3 Redis 연결 실패 예외 처리
+### 4.2 진행률 단계 (Smart Minutes 예시)
+
+| Progress | Step |
+|----------|------|
+| 5% | Initializing |
+| 10% | Loading transcript |
+| 20% | Splitting by agenda |
+| 30-70% | Summarizing section N/M |
+| 75% | Creating result document |
+| 85% | Replacing placeholders |
+| 95% | Finalizing |
+| 100% | Complete |
+
+---
+
+## 5. Task 상태 조회 API
+
+### 5.1 GET /api/v1/tasks/{task_id}
+
+```python
+@router.get("/{task_id}")
+async def get_task_status(task_id: str) -> TaskStatusResponse:
+    result = AsyncResult(task_id)
+    
+    response = TaskStatusResponse(
+        task_id=task_id,
+        status=result.status,
+        progress=result.info.get("progress", 0) if result.info else 0,
+        result=result.result if result.successful() else None,
+        error=str(result.result) if result.failed() else None,
+        task_name=result.name,
+    )
+    return response
+```
+
+### 5.2 상태 값
+
+| Status | Description | HTTP Status |
+|--------|-------------|-------------|
+| `PENDING` | 대기 중 | 202 |
+| `STARTED` | 실행 시작 | 202 |
+| `PROGRESS` | 진행 중 | 202 |
+| `SUCCESS` | 완료 | 200 |
+| `FAILURE` | 실패 | 500 |
+| `REVOKED` | 취소됨 | 410 |
+
+---
+
+## 6. 프론트엔드 폴링 가이드
+
+### 6.1 JavaScript 구현
+
+```javascript
+async function pollTaskStatus(taskId, options = {}) {
+  const {
+    interval = 2000,      // 폴링 간격 (ms)
+    maxAttempts = 60,     // 최대 시도 횟수
+    onProgress = null,    // 진행률 콜백
+  } = options;
+  
+  let attempt = 0;
+  
+  while (attempt < maxAttempts) {
+    const response = await fetch(`/api/v1/tasks/${taskId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
+    const data = await response.json();
+    
+    // 진행률 콜백
+    if (onProgress && data.progress) {
+      onProgress(data.progress, data.step);
+    }
+    
+    // 완료 체크
+    if (data.status === 'SUCCESS') {
+      return data.result;
+    }
+    
+    // 실패 체크
+    if (data.status === 'FAILURE') {
+      throw new Error(data.error || 'Task failed');
+    }
+    
+    // 취소 체크
+    if (data.status === 'REVOKED') {
+      throw new Error('Task was cancelled');
+    }
+    
+    // 대기
+    await new Promise(resolve => setTimeout(resolve, interval));
+    attempt++;
+  }
+  
+  throw new Error('Task timeout');
+}
+
+// 사용 예시
+try {
+  const result = await pollTaskStatus('task-uuid', {
+    interval: 2000,
+    onProgress: (progress, step) => {
+      console.log(`Progress: ${progress}% - ${step}`);
+      updateProgressBar(progress);
+    }
+  });
+  console.log('Task completed:', result);
+} catch (error) {
+  console.error('Task failed:', error);
+}
+```
+
+### 6.2 Apps Script 구현
+
+```javascript
+function pollTaskStatus(taskId) {
+  const maxAttempts = 60;
+  const interval = 2000;
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    const response = UrlFetchApp.fetch(
+      `${API_BASE}/api/v1/tasks/${taskId}`,
+      {
+        headers: { 'X-API-Key': API_KEY },
+        muteHttpExceptions: true
+      }
+    );
+    
+    const data = JSON.parse(response.getContentText());
+    
+    if (data.status === 'SUCCESS') {
+      return data.result;
+    }
+    
+    if (data.status === 'FAILURE') {
+      throw new Error(data.error);
+    }
+    
+    Utilities.sleep(interval);
+  }
+  
+  throw new Error('Task timeout');
+}
+```
+
+---
+
+## 7. 에러 처리
+
+### 7.1 Redis 연결 실패
 
 ```python
 from fastapi import HTTPException, status
@@ -240,88 +336,33 @@ try:
 except Exception as e:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail=f"비동기 작업 큐 연결 실패: {str(e)}",
+        detail=f"Task queue unavailable: {str(e)}"
     )
 ```
 
-### 3.4 폴링 구현 가이드 (프론트엔드)
+### 7.2 Task 재시도 설정
 
-```javascript
-async function pollTaskStatus(taskId, maxAttempts = 60) {
-  let attempt = 0;
-
-  while (attempt < maxAttempts) {
-    const response = await fetch(`/api/v1/tasks/${taskId}`);
-    const data = await response.json();
-
-    if (data.status === "SUCCESS") {
-      return data.result;
-    }
-
-    if (data.status === "FAILURE") {
-      throw new Error(data.error);
-    }
-
-    // 점진적 백오프: 처음 5회는 5초, 이후 10초
-    const delay = attempt < 5 ? 5000 : 10000;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    attempt++;
-  }
-
-  throw new Error("태스크 타임아웃");
-}
+```python
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=True,
+    retry_backoff_max=600,
+)
+def my_task(self, ...):
+    try:
+        # 작업 수행
+        ...
+    except TemporaryError as e:
+        # 수동 재시도
+        raise self.retry(exc=e, countdown=60)
 ```
 
 ---
 
-## 4. 추후 비동기 API 구현 시 주의사항
-
-### 4.1 Search API 비동기화 (예정)
-
-현재 Search API는 동기 방식이지만, LLM 응답 생성이 추가되면 비동기화가 필요할 수 있습니다:
-
-```python
-# 고려사항:
-# 1. 짧은 검색 (< 3초): 동기 유지
-# 2. LLM 답변 생성 (> 5초): 비동기 전환 권장
-
-@router.post("/search")
-async def search_documents(request: SearchRequest):
-    if request.generate_answer:
-        # LLM 응답 필요 → 비동기 태스크
-        task = search_with_llm_task.delay(
-            query=request.query,
-            top_k=request.top_k,
-        )
-        return {"task_id": task.id, "status": "PENDING"}
-    else:
-        # 검색만 → 동기 처리
-        results = await embedding_service.search_similar(...)
-        return {"results": results}
-```
-
-### 4.2 태스크 체이닝
-
-여러 비동기 작업을 연결할 때는 Celery Chain을 사용합니다:
-
-```python
-from celery import chain
-
-# 순차 실행 체인
-result = chain(
-    parse_documents.s(folder_id),
-    chunk_documents.s(),
-    embed_chunks.s(),
-    index_vectors.s(),
-)()
-```
-
----
-
-## 5. 설정 참조
-
-### 5.1 환경 변수
+## 8. 환경 변수
 
 ```bash
 # Celery
@@ -329,56 +370,36 @@ CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 # 타임아웃
-CELERY_TASK_TIME_LIMIT=3600  # 1시간
-```
+CELERY_TASK_TIME_LIMIT=3600      # 1시간
+CELERY_TASK_SOFT_TIME_LIMIT=3300 # 55분 (soft)
 
-### 5.2 Celery 앱 설정 (`tasks/celery_app.py`)
-
-```python
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    result_expires=3600,  # 결과 1시간 보관
-    task_acks_late=True,  # 태스크 완료 후 ACK
-)
+# 동시성
+CELERY_WORKER_CONCURRENCY=4
 ```
 
 ---
 
-## 6. 트러블슈팅
+## 9. Celery 앱 설정
 
-### Q: 태스크가 계속 PENDING 상태입니다
-
-1. Celery Worker가 실행 중인지 확인:
-
-   ```bash
-   celery -A app.tasks.celery_app worker --loglevel=info
-   ```
-
-2. Redis 연결 확인:
-
-   ```bash
-   redis-cli ping  # → PONG
-   ```
-
-3. 태스크 라우팅 확인 (올바른 큐 이름)
-
-### Q: 503 Service Unavailable 오류
-
-Redis 서버가 다운되었거나 연결 URL이 잘못되었습니다:
-
-```bash
-# Docker 환경
-docker-compose up -d redis
-
-# 로컬 환경
-redis-server
+```python
+# app/tasks/celery_app.py
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="Asia/Seoul",
+    enable_utc=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+)
 ```
 
 ---
 
 ## 변경 이력
 
-| 버전 | 날짜       | 변경 내용                              |
-| ---- | ---------- | -------------------------------------- |
-| 1.0  | 2026-01-31 | 초기 작성 - Ingestion 비동기 연결 구현 |
+| 버전 | 날짜 | 변경 내용 |
+|------|------|-----------|
+| 1.0 | 2026-01-31 | 초기 작성 |
+| 2.0 | 2026-02-02 | Task 목록 업데이트, 진행률 상세 추가, 폴링 가이드 개선 |
