@@ -32,14 +32,6 @@ QUERY_REWRITE_PROMPT = """당신은 대화 맥락을 이해하고 검색 쿼리�
 ## 변환된 검색 쿼리:"""
 
 
-# Partner business keywords for special handling
-PARTNER_KEYWORDS = frozenset({
-    "간식", "회식", "음식", "배달", "식사", "케이터링",
-    "식당", "맛집", "주문", "먹을거", "밥", "저녁",
-    "점심", "아침", "디저트", "커피", "음료", "제휴",
-})
-
-
 class QueryRewriterService:
     """
     Service for rewriting user queries with conversation context.
@@ -47,7 +39,6 @@ class QueryRewriterService:
     Features:
     - Context-aware query reformulation using LLM
     - Pronoun resolution ("그거" → specific term)
-    - Keyword extraction for partner business matching
 
     This service bridges the gap between conversational queries
     and effective vector search queries.
@@ -176,36 +167,3 @@ class QueryRewriterService:
                 return False
 
         return True
-
-    def extract_partner_keywords(self, query: str) -> set[str]:
-        """
-        Extract keywords that trigger partner business lookup.
-
-        Args:
-            query: Search query string.
-
-        Returns:
-            Set of matched partner-related keywords.
-        """
-        # Simple word-based matching
-        words = set(query.replace("?", "").replace("!", "").split())
-
-        # Also check for partial matches
-        matched = set()
-        for keyword in PARTNER_KEYWORDS:
-            if keyword in query:
-                matched.add(keyword)
-
-        return matched
-
-    def should_search_partners(self, query: str) -> bool:
-        """
-        Determine if partner business info should be included.
-
-        Args:
-            query: Search query string.
-
-        Returns:
-            True if partner info should be fetched.
-        """
-        return len(self.extract_partner_keywords(query)) > 0

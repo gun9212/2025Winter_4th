@@ -320,24 +320,28 @@ class EmbeddingService:
         access_level: int = 4,
         semantic_weight: float = 0.7,
         time_weight: float = 0.3,
+        year_filter: list[int] | None = None,
+        department_filter: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Search with combined semantic and time decay scoring.
-        
+
         Final Score = semantic_weight * similarity + time_weight * recency
-        
+
         Args:
             query_embedding: Query vector
             limit: Maximum results
             access_level: Access level filter
             semantic_weight: Weight for semantic similarity (default 0.7)
             time_weight: Weight for recency (default 0.3)
-            
+            year_filter: Optional list of years to filter (e.g., [2024, 2025])
+            department_filter: Optional department to filter (e.g., '문화국', '복지국')
+
         Returns:
             List of matching chunks with combined scores
         """
-        query = """
-            SELECT 
+        base_query = """
+            SELECT
                 c.id,
                 c.content,
                 c.parent_content,
@@ -351,7 +355,7 @@ class EmbeddingService:
                 1 - (c.embedding <=> :query_embedding) as semantic_score,
                 EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date)) as time_score,
                 (
-                    :semantic_weight * (1 - (c.embedding <=> :query_embedding)) + 
+                    :semantic_weight * (1 - (c.embedding <=> :query_embedding)) +
                     :time_weight * EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date))
                 ) as final_score
             FROM document_chunks c
@@ -360,19 +364,32 @@ class EmbeddingService:
                 AND c.is_parent = FALSE
                 AND c.access_level >= :access_level
                 AND d.time_decay_date IS NOT NULL
+        """
+
+        params = {
+            "query_embedding": str(query_embedding),
+            "access_level": access_level,
+            "semantic_weight": semantic_weight,
+            "time_weight": time_weight,
+            "limit": limit,
+        }
+
+        if year_filter:
+            base_query += " AND d.year = ANY(:year_filter)"
+            params["year_filter"] = year_filter
+
+        if department_filter:
+            base_query += " AND d.department = :department_filter"
+            params["department_filter"] = department_filter
+
+        base_query += """
             ORDER BY final_score DESC
             LIMIT :limit
         """
 
         result = await self.db.execute(
-            text(query),
-            {
-                "query_embedding": str(query_embedding),
-                "access_level": access_level,
-                "semantic_weight": semantic_weight,
-                "time_weight": time_weight,
-                "limit": limit,
-            },
+            text(base_query),
+            params,
         )
         rows = result.fetchall()
 

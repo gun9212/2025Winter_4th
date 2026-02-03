@@ -5,8 +5,11 @@ import json
 from typing import Any
 
 import google.generativeai as genai
+import structlog
 
 from app.core.config import settings
+
+logger = structlog.get_logger()
 
 
 class GeminiService:
@@ -73,7 +76,7 @@ class GeminiService:
             )
             return response.text
         except Exception as e:
-            print(f"Gemini generation error: {e}")
+            logger.error("Gemini generation error", error=str(e))
             return "죄송합니다. AI 모델 응답 중 오류가 발생했습니다."
 
     def analyze_transcript(
@@ -134,7 +137,7 @@ class GeminiService:
             response = self.vision_model.generate_content([prompt, image_part])
             return response.text
         except Exception as e:
-            print(f"Vision generation error: {e}")
+            logger.error("Vision generation error", error=str(e))
             return "이미지 분석 중 오류가 발생했습니다."
 
     def generate_answer(
@@ -142,7 +145,6 @@ class GeminiService:
         query: str,
         context: list[str],
         chat_history: str | None = None,
-        partner_info: dict | None = None,
     ) -> str:
         """
         Generate an answer based on retrieved context (RAG).
@@ -156,24 +158,16 @@ class GeminiService:
 {chat_history}
 """
 
-        partner_section = ""
-        if partner_info:
-            partner_section = f"""
-## 제휴 업체 정보 (참고)
-{partner_info}
-"""
-
         prompt = f"""당신은 학생회 업무를 돕는 AI 비서 'Council-AI'입니다.
 
 ## 역할
 - 제공된 [검색된 문서]를 최우선 근거로 사용하여 정확하게 답변합니다.
-- [제휴 업체 정보]가 질문과 관련 있다면 적극적으로 안내합니다.
 - 문서에 없는 내용은 추측하지 않고, "해당 정보를 문서에서 찾을 수 없습니다"라고 답합니다.
 - [이전 대화]의 맥락을 고려하여, 사용자가 '그거', '저거'로 지칭한 대상을 파악합니다.
 
 ## 검색된 문서
 {context_text}
-{partner_section}{history_section}
+{history_section}
 ## 사용자 질문
 {query}
 
