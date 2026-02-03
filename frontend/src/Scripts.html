@@ -563,6 +563,11 @@ function generateMinutes() {
     showToast('안건지를 선택해주세요.', 'warning');
     return;
   }
+  // 🆕 속기록 필수 검사 (transcript_doc_id 또는 transcript_text 중 하나 필수)
+  if (!transcriptDocId || transcriptDocId.trim() === '') {
+    showToast('속기록 문서를 선택해주세요. (필수)', 'warning');
+    return;
+  }
   if (!meetingName) {
     showToast('회의명을 입력해주세요.', 'warning');
     return;
