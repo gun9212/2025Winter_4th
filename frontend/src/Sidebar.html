@@ -172,8 +172,13 @@
       display: none !important;
     }
     .tab-content.active {
-      display: block !important;
+      display: flex !important;
+      flex-direction: column;
       animation: fadeIn 0.2s ease-out;
+    }
+    /* Chat 탭 이외의 탭은 block으로 */
+    #docs-tab.active, #calendar-tab.active, #admin-tab.active {
+      display: block !important;
     }
     @keyframes fadeIn {
       from { opacity: 0; }
@@ -392,12 +397,12 @@
     </nav>
     
     <!-- 탭 콘텐츠 영역 -->
-    <main class="flex-1 overflow-hidden">
+    <main class="flex-1 overflow-hidden relative">
       
       <!-- ========== Chat Tab ========== -->
-      <div id="chat-tab" class="tab-content active h-full flex flex-col">
-        <!-- 채팅 히스토리 -->
-        <div id="chat-history" class="flex-1 overflow-y-auto p-4 space-y-4">
+      <div id="chat-tab" class="tab-content active absolute inset-0 flex flex-col">
+        <!-- 채팅 히스토리 (스크롤 영역) -->
+        <div id="chat-history" class="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
           <!-- 웰컴 메시지 -->
           <div class="text-center text-gray-500 py-8">
             <span class="text-4xl block mb-2">🤖</span>
@@ -406,8 +411,8 @@
           </div>
         </div>
         
-        <!-- 채팅 입력 -->
-        <div class="border-t border-gray-200 p-3 bg-white">
+        <!-- 채팅 입력 (하단 고정) -->
+        <div class="border-t border-gray-200 p-3 bg-white flex-shrink-0">
           <div class="flex gap-2">
             <textarea 
               id="chat-input" 

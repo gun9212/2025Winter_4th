@@ -373,21 +373,9 @@ function createCalendarEvent(eventData) {
       throw new Error(`캘린더를 찾을 수 없습니다: ${calendarId}`);
     }
     
-    // 3. 🛡️ 권한 체크 (핵심!)
-    const accessLevel = calendar.getEffectiveAccess();
     const calendarName = calendar.getName();
     
-    // OWNER 또는 WRITER 권한이 있어야 이벤트 생성 가능
-    if (accessLevel !== CalendarApp.AccessMode.OWNER && 
-        accessLevel !== CalendarApp.AccessMode.WRITER) {
-      throw new Error(
-        `캘린더 "${calendarName}"에 쓰기 권한이 없습니다.\n` +
-        `현재 권한: ${accessLevel}\n` +
-        `캘린더 관리자에게 WRITER 이상의 권한을 요청하세요.`
-      );
-    }
-    
-    // 4. 시간 파싱 (ISO String → Date)
+    // 3. 시간 파싱 (ISO String → Date)
     const startTime = new Date(eventData.dtStart);
     const endTime = new Date(eventData.dtEnd);
     
@@ -400,7 +388,7 @@ function createCalendarEvent(eventData) {
       throw new Error('종료 시간은 시작 시간보다 이후여야 합니다.');
     }
     
-    // 5. 이벤트 옵션 구성
+    // 4. 이벤트 옵션 구성
     const options = {};
     
     // 설명 추가
@@ -414,7 +402,7 @@ function createCalendarEvent(eventData) {
       options.sendInvites = true; // 초대 이메일 발송
     }
     
-    // 6. 이벤트 생성
+    // 5. 이벤트 생성 (권한이 없으면 여기서 예외 발생)
     const event = calendar.createEvent(
       eventData.summary,
       startTime,
@@ -422,11 +410,10 @@ function createCalendarEvent(eventData) {
       options
     );
     
-    // 7. 결과 반환
+    // 6. 결과 반환
     const eventId = event.getId();
     
     // Google Calendar 웹 링크 생성
-    // 형식: https://calendar.google.com/calendar/event?eid=BASE64_ENCODED_ID
     const encodedEventId = Utilities.base64Encode(eventId + ' ' + calendarId);
     const htmlLink = `https://calendar.google.com/calendar/event?eid=${encodedEventId}`;
     
@@ -444,9 +431,17 @@ function createCalendarEvent(eventData) {
     
   } catch (error) {
     Logger.log(`이벤트 생성 실패: ${error.message}`);
+    
+    // 권한 관련 에러 메시지 개선
+    let errorMessage = error.message;
+    if (errorMessage.includes('denied') || errorMessage.includes('permission') || 
+        errorMessage.includes('액세스') || errorMessage.includes('권한')) {
+      errorMessage = `캘린더에 쓰기 권한이 없습니다. 캘린더 관리자에게 권한을 요청하세요.\n(원본 오류: ${error.message})`;
+    }
+    
     return {
       success: false,
-      error: error.message
+      error: errorMessage
     };
   }
 }
@@ -463,7 +458,11 @@ function isValidEmailAddress(email) {
 }
 
 /**
- * 캘린더 접근 권한 확인 (디버깅/테스트용)
+ * 캘린더 접근 권한 확인 (테스트용)
+ * 
+ * 실제 이벤트 생성을 시도하여 권한을 확인합니다.
+ * (GAS 기본 CalendarApp에서는 권한 레벨을 직접 조회할 수 없음)
+ * 
  * @param {string} calendarId - 캘린더 ID
  * @returns {Object} 권한 정보
  */
@@ -480,17 +479,31 @@ function checkCalendarAccess(calendarId) {
       };
     }
     
-    const accessLevel = calendar.getEffectiveAccess();
-    const canWrite = accessLevel === CalendarApp.AccessMode.OWNER || 
-                     accessLevel === CalendarApp.AccessMode.WRITER;
+    const calendarName = calendar.getName();
+    const isOwned = calendar.isOwnedByMe();
+    
+    // 테스트 이벤트 생성 시도 (즉시 삭제)
+    let canWrite = false;
+    try {
+      const now = new Date();
+      const testEvent = calendar.createEvent(
+        '[테스트] 권한 확인용 - 자동 삭제됨',
+        now,
+        new Date(now.getTime() + 60000) // 1분 후
+      );
+      testEvent.deleteEvent(); // 즉시 삭제
+      canWrite = true;
+    } catch (writeError) {
+      canWrite = false;
+    }
     
     return {
       success: true,
       calendarId: calendarId,
-      calendarName: calendar.getName(),
-      accessLevel: accessLevel.toString(),
+      calendarName: calendarName,
+      accessLevel: isOwned ? 'OWNER' : (canWrite ? 'WRITER' : 'READ_ONLY'),
       canWrite: canWrite,
-      isOwner: accessLevel === CalendarApp.AccessMode.OWNER
+      isOwner: isOwned
     };
   } catch (error) {
     return {
@@ -509,20 +522,20 @@ function getAccessibleCalendars() {
     const calendars = CalendarApp.getAllCalendars();
     
     return calendars.map(function(cal) {
-      const access = cal.getEffectiveAccess();
+      const isOwned = cal.isOwnedByMe();
       return {
         id: cal.getId(),
         name: cal.getName(),
-        accessLevel: access.toString(),
-        canWrite: access === CalendarApp.AccessMode.OWNER || 
-                  access === CalendarApp.AccessMode.WRITER,
-        isOwned: access === CalendarApp.AccessMode.OWNER,
+        isOwned: isOwned,
+        // 소유자가 아닌 경우 쓰기 권한은 실제 시도해봐야 알 수 있음
+        // 여기서는 소유자 여부만 표시
+        accessLevel: isOwned ? 'OWNER' : 'UNKNOWN',
         color: cal.getColor()
       };
     }).sort(function(a, b) {
-      // 쓰기 가능한 캘린더를 먼저 정렬
-      if (a.canWrite && !b.canWrite) return -1;
-      if (!a.canWrite && b.canWrite) return 1;
+      // 소유한 캘린더를 먼저 정렬
+      if (a.isOwned && !b.isOwned) return -1;
+      if (!a.isOwned && b.isOwned) return 1;
       return a.name.localeCompare(b.name);
     });
   } catch (error) {

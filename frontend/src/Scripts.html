@@ -776,14 +776,30 @@
       return;
     }
 
+    // 날짜가 없는 경우를 위한 기본값: 오늘로부터 1주일 뒤
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 7);
+    const defaultDateStr = defaultDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+
     todos.forEach(function (todo, index) {
       const card = document.createElement('div');
       card.className = 'todo-card bg-white border border-gray-200 rounded-lg p-3';
       card.dataset.index = index;
 
+      // 날짜 처리: 없으면 1주일 뒤로 기본 설정
+      const todoDate = todo.parsed_date || defaultDateStr;
+      const isDefaultDate = !todo.parsed_date;
+      
       // 날짜가 과거인지 확인
-      const isPastDate = todo.parsed_date && new Date(todo.parsed_date) < new Date();
-      const dateWarning = isPastDate ? '<span class="text-xs text-orange-500 ml-1">(과거)</span>' : '';
+      const isPastDate = new Date(todoDate) < new Date(new Date().toDateString());
+      
+      // 날짜 라벨 구성
+      let dateLabel = '날짜';
+      if (isDefaultDate) {
+        dateLabel += ' <span class="text-xs text-blue-500 ml-1">(기본: 1주 후)</span>';
+      } else if (isPastDate) {
+        dateLabel += ' <span class="text-xs text-orange-500 ml-1">(과거)</span>';
+      }
 
       card.innerHTML = `
       <div class="flex items-start gap-2 mb-2">
@@ -794,8 +810,8 @@
       </div>
       <div class="grid grid-cols-2 gap-2 ml-6">
         <div>
-          <label class="text-xs text-gray-500">날짜 ${dateWarning}</label>
-          <input type="date" class="todo-date w-full border border-gray-200 rounded px-2 py-1 text-xs ${isPastDate ? 'border-orange-300' : ''}" value="${todo.parsed_date || ''}" data-field="date">
+          <label class="text-xs text-gray-500">${dateLabel}</label>
+          <input type="date" class="todo-date w-full border border-gray-200 rounded px-2 py-1 text-xs ${isPastDate ? 'border-orange-300' : ''} ${isDefaultDate ? 'border-blue-300' : ''}" value="${todoDate}" data-field="date">
         </div>
         <div>
           <label class="text-xs text-gray-500">담당자 (이메일)</label>
