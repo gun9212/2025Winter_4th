@@ -28,6 +28,7 @@ from app.services.ai.gemini import GeminiService
 
 # Celery 태스크 import
 from app.tasks.pipeline import ingest_folder as ingest_folder_task
+from app.tasks.pipeline import reprocess_document as reprocess_document_task
 
 logger = structlog.get_logger()
 
@@ -260,6 +261,69 @@ async def search_documents(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"검색 중 오류가 발생했습니다: {str(e)}",
+        )
+
+
+@router.post(
+    "/documents/{document_id}/reprocess",
+    response_model=IngestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="문서 재처리",
+    description="""
+    기존 문서를 재처리합니다.
+    
+    지정된 단계부터 파이프라인을 다시 실행합니다:
+    - `from_step=2`: 분류부터 재시작
+    - `from_step=3`: 파싱부터 재시작 (Upstage API 재호출)
+    - `from_step=4`: 전처리부터 재시작
+    - `from_step=5`: 청킹부터 재시작
+    """,
+)
+async def reprocess_document(
+    document_id: int,
+    db: DbSession,
+    api_key: ApiKey,
+    from_step: int = 3,  # 기본값: 파싱부터 재시작
+) -> IngestResponse:
+    """
+    기존 문서를 재처리합니다.
+    
+    Args:
+        document_id: 문서 ID
+        db: 데이터베이스 세션
+        api_key: API 키 인증
+        from_step: 재시작할 단계 (2=분류, 3=파싱, 4=전처리, 5=청킹)
+    """
+    # 문서 존재 여부 확인
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"문서 ID {document_id}를 찾을 수 없습니다.",
+        )
+    
+    try:
+        # Celery 태스크 실행
+        task = reprocess_document_task.delay(document_id, from_step)
+        
+        logger.info(
+            "문서 재처리 태스크 시작됨",
+            task_id=task.id,
+            document_id=document_id,
+            from_step=from_step,
+        )
+        
+        return IngestResponse(
+            task_id=task.id,
+            message=f"문서 재처리가 시작되었습니다. (Step {from_step}부터)",
+            documents_found=1,
+        )
+        
+    except Exception as e:
+        logger.exception("재처리 태스크 시작 실패", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"비동기 작업 큐 연결 실패: {str(e)}",
         )
 
 
