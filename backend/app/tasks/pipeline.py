@@ -409,20 +409,28 @@ def ingest_folder(
 def reprocess_document(
     self,
     document_id: int,
-    from_step: int = 2,
+    from_step: int = 3,
 ) -> dict[str, Any]:
     """
     Reprocess an existing document from a specific step.
     
     Args:
         document_id: Database document ID
-        from_step: Step to start from (2-7)
+        from_step: Step to start from (2=classify, 3=parse, 4=preprocess, 5=chunk)
         
     Returns:
         Task result
     """
     async def _reprocess():
-        from sqlalchemy import select
+        from pathlib import Path
+        from sqlalchemy import select, delete
+        from app.pipeline.step_03_parse import ParsingService
+        from app.pipeline.step_04_preprocess import PreprocessingService
+        from app.pipeline.step_05_chunk import ChunkingService
+        from app.pipeline.step_06_enrich import MetadataEnrichmentService
+        from app.pipeline.step_07_embed import EmbeddingService
+        from app.models.document import DocumentCategory
+        from app.models.embedding import DocumentChunk
         
         async with get_celery_session() as db:
             result = await db.execute(
@@ -433,24 +441,138 @@ def reprocess_document(
             if not document:
                 return {"status": "error", "error": "Document not found"}
             
-            # Delete existing chunks if reprocessing from chunking or earlier
+            logger.info(
+                "Starting document reprocess",
+                document_id=document_id,
+                from_step=from_step,
+                drive_name=document.drive_name,
+            )
+            
+            # Delete existing chunks using SQLAlchemy ORM
             if from_step <= 5:
                 await db.execute(
-                    f"DELETE FROM document_chunks WHERE document_id = {document_id}"
+                    delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
                 )
+                await db.flush()
+                logger.info("Deleted existing chunks", document_id=document_id)
             
-            # Re-run pipeline from specified step
-            # (Implementation similar to run_full_pipeline but with step skipping)
-            
-            return {
-                "status": "success",
-                "document_id": document_id,
-                "reprocessed_from_step": from_step,
-            }
+            try:
+                # Find file on disk
+                file_path = None
+                base_path = Path("/app/data/raw")
+                
+                if document.drive_path:
+                    potential_path = base_path / document.drive_path / document.drive_name
+                    if potential_path.exists():
+                        file_path = str(potential_path)
+                
+                if not file_path:
+                    potential_path = base_path / document.drive_name
+                    if potential_path.exists():
+                        file_path = str(potential_path)
+                
+                if not file_path or not Path(file_path).exists():
+                    return {
+                        "status": "error",
+                        "document_id": document_id,
+                        "error": f"File not found: {document.drive_name}",
+                    }
+                
+                # Step 3: Parsing
+                if from_step <= 3:
+                    logger.info("Step 3: Parsing", document_id=document_id)
+                    parser = ParsingService()
+                    with open(file_path, "rb") as f:
+                        file_content = f.read()
+                    
+                    parse_result = await parser.parse_document(
+                        file_content=file_content,
+                        filename=document.drive_name,
+                        caption_images=True,
+                    )
+                    
+                    document.parsed_content = parse_result.markdown_content
+                    document.status = DocumentStatus.PREPROCESSING
+                    await db.flush()
+                    logger.info(
+                        "Parsing complete",
+                        document_id=document_id,
+                        parsed_length=len(parse_result.markdown_content),
+                    )
+                
+                # Step 4: Preprocessing
+                if from_step <= 4:
+                    logger.info("Step 4: Preprocessing", document_id=document_id)
+                    preprocessor = PreprocessingService()
+                    is_meeting = document.doc_category == DocumentCategory.MEETING_DOCUMENT
+                    
+                    preprocess_result = await preprocessor.preprocess_document(
+                        content=document.parsed_content or "",
+                        is_meeting_document=is_meeting,
+                    )
+                    
+                    document.preprocessed_content = preprocess_result.processed_content
+                    document.status = DocumentStatus.CHUNKING
+                    await db.flush()
+                    logger.info(
+                        "Preprocessing complete",
+                        document_id=document_id,
+                        preprocessed_length=len(preprocess_result.processed_content),
+                    )
+                
+                # Step 5: Chunking
+                if from_step <= 5:
+                    logger.info("Step 5: Chunking", document_id=document_id)
+                    chunker = ChunkingService()
+                    chunks = chunker.chunk_document(
+                        content=document.preprocessed_content or "",
+                        document_metadata={"document_id": document.id},
+                    )
+                    
+                    document.status = DocumentStatus.EMBEDDING
+                    await db.flush()
+                
+                    # Step 6: Enrichment
+                    logger.info("Step 6: Enrichment", document_id=document_id)
+                    enricher = MetadataEnrichmentService(db)
+                    await enricher.enrich_document(
+                        document=document,
+                        classification_result={
+                            "department": document.department,
+                            "year": document.year,
+                        },
+                        chunks=chunks,
+                    )
+                    await db.flush()
+                
+                    # Step 7: Embedding
+                    logger.info("Step 7: Embedding", document_id=document_id)
+                    embedder = EmbeddingService(db)
+                    await embedder.embed_chunks(document.id)
+                
+                document.status = DocumentStatus.COMPLETED
+                await db.commit()
+                
+                logger.info("Reprocess completed", document_id=document_id)
+                
+                return {
+                    "status": "success",
+                    "document_id": document_id,
+                    "reprocessed_from_step": from_step,
+                    "parsed_length": len(document.parsed_content or ""),
+                    "preprocessed_length": len(document.preprocessed_content or ""),
+                }
+                
+            except Exception as e:
+                document.status = DocumentStatus.FAILED
+                document.error_message = str(e)
+                await db.commit()
+                raise
 
     try:
         return run_async(_reprocess())
     except Exception as e:
+        logger.exception("Reprocess failed", document_id=document_id, error=str(e))
         return {
             "status": "error",
             "document_id": document_id,
