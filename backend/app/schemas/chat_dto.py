@@ -19,7 +19,7 @@ class ChatOptions(BaseModel):
         description="Whether to include source document references",
     )
     max_results: int = Field(
-        default=5,
+        default=10,
         ge=1,
         le=20,
         description="Maximum number of chunks to retrieve",
