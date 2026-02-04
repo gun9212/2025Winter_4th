@@ -187,6 +187,12 @@ class ClassificationService:
         if match:
             return 2000 + int(match.group(1))
 
+        # Pattern 3: Generation (e.g., 제37대 -> 2025)
+        # Base year: 1988 + Generation (e.g., 37 + 1988 = 2025)
+        match = re.search(r'제?(\d+)대', combined)
+        if match:
+            return 1988 + int(match.group(1))
+
         return None
 
     def _get_file_extension_type(self, extension: str) -> tuple[DocumentType, FileExtensionType]:

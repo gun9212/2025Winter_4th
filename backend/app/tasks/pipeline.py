@@ -22,15 +22,26 @@ from app.models.document import Document, DocumentStatus
 
 logger = structlog.get_logger()
 
+import nest_asyncio
+nest_asyncio.apply()
+
 
 def run_async(coro):
-    """Helper to run async code in sync Celery context."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    """Helper to run async code in sync Celery context.
+    
+    Uses nest_asyncio to allow nested event loops, preventing
+    'Event loop is closed' errors with Gemini SDK.
+    """
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(coro)
 
 
 @asynccontextmanager
