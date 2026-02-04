@@ -12,22 +12,22 @@
   const State = {
     chatSessionId: null,
     chatHistory: [],
-    currentTab: 'chat',
+    currentTab: "chat",
     pollingIntervals: {},
     pickerLoaded: false,
     oauthToken: null,
-    developerKey: null
+    developerKey: null,
   };
 
   // ============================================
   // 초기화
   // ============================================
-  document.addEventListener('DOMContentLoaded', function () {
+  document.addEventListener("DOMContentLoaded", function () {
     initApp();
   });
 
   async function initApp() {
-    console.log('[Council-AI] Initializing...');
+    console.log("[Council-AI] Initializing...");
 
     // 사용자 이메일 표시
     loadUserEmail();
@@ -51,9 +51,9 @@
     loadSettings();
 
     // 기본 탭 활성화
-    activateTab('chat');
+    activateTab("chat");
 
-    console.log('[Council-AI] Initialized');
+    console.log("[Council-AI] Initialized");
   }
 
   // ============================================
@@ -62,7 +62,7 @@
   function loadUserEmail() {
     google.script.run
       .withSuccessHandler(function (email) {
-        document.getElementById('user-email').textContent = email || '';
+        document.getElementById("user-email").textContent = email || "";
       })
       .getCurrentUserEmail();
   }
@@ -71,53 +71,65 @@
   // 탭 관리
   // ============================================
   function initTabs() {
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    console.log('[Council-AI] initTabs - found', tabBtns.length, 'tab buttons');
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    console.log("[Council-AI] initTabs - found", tabBtns.length, "tab buttons");
 
     tabBtns.forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
+      btn.addEventListener("click", function (e) {
         e.preventDefault();
         const tabId = this.dataset.tab;
-        console.log('[Council-AI] Tab clicked:', tabId);
+        console.log("[Council-AI] Tab clicked:", tabId);
         activateTab(tabId);
       });
     });
   }
 
   function activateTab(tabId) {
-    console.log('[Council-AI] activateTab called with:', tabId);
+    console.log("[Council-AI] activateTab called with:", tabId);
 
     // 버튼 상태 업데이트
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      btn.classList.remove('border-google-blue', 'text-google-blue', 'bg-blue-50');
-      btn.classList.add('border-transparent');
+    document.querySelectorAll(".tab-btn").forEach(function (btn) {
+      btn.classList.remove(
+        "border-google-blue",
+        "text-google-blue",
+        "bg-blue-50",
+      );
+      btn.classList.add("border-transparent");
     });
 
     const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-    console.log('[Council-AI] Found active button:', !!activeBtn);
+    console.log("[Council-AI] Found active button:", !!activeBtn);
     if (activeBtn) {
-      activeBtn.classList.add('border-google-blue', 'text-google-blue', 'bg-blue-50');
-      activeBtn.classList.remove('border-transparent');
+      activeBtn.classList.add(
+        "border-google-blue",
+        "text-google-blue",
+        "bg-blue-50",
+      );
+      activeBtn.classList.remove("border-transparent");
     }
 
     // 콘텐츠 표시
-    const allTabs = document.querySelectorAll('.tab-content');
-    console.log('[Council-AI] Found', allTabs.length, 'tab contents');
+    const allTabs = document.querySelectorAll(".tab-content");
+    console.log("[Council-AI] Found", allTabs.length, "tab contents");
     allTabs.forEach(function (content) {
-      content.classList.remove('active');
+      content.classList.remove("active");
     });
 
-    const activeContent = document.getElementById(tabId + '-tab');
-    console.log('[Council-AI] Found active content:', tabId + '-tab', !!activeContent);
+    const activeContent = document.getElementById(tabId + "-tab");
+    console.log(
+      "[Council-AI] Found active content:",
+      tabId + "-tab",
+      !!activeContent,
+    );
     if (activeContent) {
-      activeContent.classList.add('active');
-      console.log('[Council-AI] Tab activated successfully:', tabId);
+      activeContent.classList.add("active");
+      console.log("[Council-AI] Tab activated successfully:", tabId);
     } else {
-      console.error('[Council-AI] Tab content not found:', tabId + '-tab');
+      console.error("[Council-AI] Tab content not found:", tabId + "-tab");
     }
 
     State.currentTab = tabId;
-    saveUserProperty('lastTab', tabId);
+    saveUserProperty("lastTab", tabId);
   }
 
   // ============================================
@@ -131,7 +143,7 @@
           activateTab(lastTab);
         }
       })
-      .getUserProperty('lastTab');
+      .getUserProperty("lastTab");
 
     // 채팅 세션 ID 복원 및 히스토리 로드
     google.script.run
@@ -147,7 +159,7 @@
 
   // 채팅 히스토리 로드 (백엔드에서)
   function loadChatHistory(sessionId) {
-    console.log('[Council-AI] Loading chat history for session:', sessionId);
+    console.log("[Council-AI] Loading chat history for session:", sessionId);
 
     google.script.run
       .withSuccessHandler(function (result) {
@@ -156,15 +168,15 @@
 
           if (messages.length > 0) {
             // 웰컴 메시지 제거
-            const container = document.getElementById('chat-history');
-            const welcome = container.querySelector('.text-center');
+            const container = document.getElementById("chat-history");
+            const welcome = container.querySelector(".text-center");
             if (welcome) {
               welcome.remove();
             }
 
             // 히스토리 렌더링
             messages.forEach(function (msg) {
-              if (msg.role === 'user' || msg.role === 'assistant') {
+              if (msg.role === "user" || msg.role === "assistant") {
                 addChatMessage(msg.role, msg.content, false, msg.sources);
               }
             });
@@ -172,12 +184,12 @@
             // 상태에도 저장
             State.chatHistory = messages;
 
-            console.log('[Council-AI] Restored', messages.length, 'messages');
+            console.log("[Council-AI] Restored", messages.length, "messages");
           }
         }
       })
       .withFailureHandler(function (error) {
-        console.warn('[Council-AI] Failed to load chat history:', error);
+        console.warn("[Council-AI] Failed to load chat history:", error);
       })
       .apiGetChatHistory(sessionId);
   }
@@ -190,43 +202,43 @@
   // Chat Tab
   // ============================================
   function initChatTab() {
-    const input = document.getElementById('chat-input');
-    const sendBtn = document.getElementById('chat-send-btn');
-    const clearBtn = document.getElementById('chat-clear-btn');
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send-btn");
+    const clearBtn = document.getElementById("chat-clear-btn");
 
     // Enter 키로 전송
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendChatMessage();
       }
     });
 
     // 전송 버튼
-    sendBtn.addEventListener('click', sendChatMessage);
+    sendBtn.addEventListener("click", sendChatMessage);
 
     // 대화 초기화
-    clearBtn.addEventListener('click', clearChat);
+    clearBtn.addEventListener("click", clearChat);
   }
 
   function sendChatMessage() {
-    const input = document.getElementById('chat-input');
+    const input = document.getElementById("chat-input");
     const query = input.value.trim();
 
     if (!query) {
-      showToast('메시지를 입력해주세요.', 'warning');
+      showToast("메시지를 입력해주세요.", "warning");
       return;
     }
 
     // 입력창 비우기
-    input.value = '';
+    input.value = "";
 
     // 전송 버튼 비활성화
-    const sendBtn = document.getElementById('chat-send-btn');
+    const sendBtn = document.getElementById("chat-send-btn");
     sendBtn.disabled = true;
 
     // 사용자 메시지 표시
-    addChatMessage('user', query);
+    addChatMessage("user", query);
 
     // 타이핑 인디케이터 표시
     const loadingId = addTypingIndicator();
@@ -252,53 +264,65 @@
           // 응답 메시지 표시 (메타데이터 포함)
           const metadata = {
             latency: latency,
-            model: result.data.model || 'solar-pro',
-            tokensUsed: result.data.usage?.total_tokens || null
+            model: result.data.model || "solar-pro",
+            tokensUsed: result.data.usage?.total_tokens || null,
           };
-          addChatMessage('assistant', result.data.answer, false, result.data.sources, metadata);
+          addChatMessage(
+            "assistant",
+            result.data.answer,
+            false,
+            result.data.sources,
+            metadata,
+          );
 
           // 채팅 기록에 추가
-          State.chatHistory.push({ role: 'user', content: query });
+          State.chatHistory.push({ role: "user", content: query });
           State.chatHistory.push({
-            role: 'assistant',
+            role: "assistant",
             content: result.data.answer,
-            sources: result.data.sources
+            sources: result.data.sources,
           });
         } else {
           // 에러 객체를 문자열로 변환
           let errorMsg = result.error;
-          if (typeof errorMsg === 'object') {
-            errorMsg = errorMsg.detail || errorMsg.message || JSON.stringify(errorMsg);
+          if (typeof errorMsg === "object") {
+            errorMsg =
+              errorMsg.detail || errorMsg.message || JSON.stringify(errorMsg);
           }
-          addChatMessage('assistant', '⚠️ 오류: ' + errorMsg);
-          showToast('API 호출 실패', 'error');
-          console.error('[Council-AI] Chat error:', result);
+          addChatMessage("assistant", "⚠️ 오류: " + errorMsg);
+          showToast("API 호출 실패", "error");
+          console.error("[Council-AI] Chat error:", result);
         }
       })
       .withFailureHandler(function (error) {
         removeTypingIndicator(loadingId);
         sendBtn.disabled = false;
-        let errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : error);
-        addChatMessage('assistant', '⚠️ 오류: ' + errorMsg);
-        showToast('서버 오류', 'error');
-        console.error('[Council-AI] Chat failure:', error);
+        let errorMsg =
+          error.message ||
+          (typeof error === "object" ? JSON.stringify(error) : error);
+        addChatMessage("assistant", "⚠️ 오류: " + errorMsg);
+        showToast("서버 오류", "error");
+        console.error("[Council-AI] Chat failure:", error);
       })
-      .apiChat(query, State.chatSessionId, 4, { max_results: 5, include_sources: true });
+      .apiChat(query, State.chatSessionId, 4, {
+        max_results: 5,
+        include_sources: true,
+      });
   }
 
   function addTypingIndicator() {
-    const container = document.getElementById('chat-history');
-    const messageId = 'typing-' + Date.now();
+    const container = document.getElementById("chat-history");
+    const messageId = "typing-" + Date.now();
 
     // 웰컴 메시지 제거
-    const welcome = container.querySelector('.text-center');
+    const welcome = container.querySelector(".text-center");
     if (welcome) {
       welcome.remove();
     }
 
-    const div = document.createElement('div');
+    const div = document.createElement("div");
     div.id = messageId;
-    div.className = 'flex justify-start';
+    div.className = "flex justify-start";
 
     div.innerHTML = `
     <div class="max-w-[85%] bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2">
@@ -324,29 +348,31 @@
   }
 
   function addChatMessage(role, content, isLoading, sources, metadata) {
-    const container = document.getElementById('chat-history');
-    const messageId = 'msg-' + Date.now();
+    const container = document.getElementById("chat-history");
+    const messageId = "msg-" + Date.now();
 
     // 웰컴 메시지 제거
-    const welcome = container.querySelector('.text-center');
+    const welcome = container.querySelector(".text-center");
     if (welcome) {
       welcome.remove();
     }
 
-    const div = document.createElement('div');
+    const div = document.createElement("div");
     div.id = messageId;
-    div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+    div.className = `flex ${role === "user" ? "justify-end" : "justify-start"}`;
 
-    const bubble = document.createElement('div');
-    bubble.className = role === 'user'
-      ? 'max-w-[85%] bg-google-blue text-white rounded-2xl rounded-br-sm px-4 py-2'
-      : 'max-w-[85%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 chat-message';
+    const bubble = document.createElement("div");
+    bubble.className =
+      role === "user"
+        ? "max-w-[85%] bg-google-blue text-white rounded-2xl rounded-br-sm px-4 py-2"
+        : "max-w-[85%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 chat-message";
 
     if (isLoading) {
-      bubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      bubble.innerHTML =
+        '<div class="typing-indicator"><span></span><span></span><span></span></div>';
     } else {
       // Markdown 렌더링 (봇 응답만)
-      if (role === 'assistant' && typeof marked !== 'undefined') {
+      if (role === "assistant" && typeof marked !== "undefined") {
         let html = marked.parse(content);
         // 코드 블록에 언어 라벨과 복사 버튼 추가
         html = enhanceCodeBlocks(html);
@@ -357,45 +383,47 @@
 
       // 소스 링크 추가 (개선된 UX)
       if (sources && sources.length > 0) {
-        const sourcesWrapper = document.createElement('div');
-        sourcesWrapper.className = 'mt-3 pt-2 border-t border-gray-200';
+        const sourcesWrapper = document.createElement("div");
+        sourcesWrapper.className = "mt-3 pt-2 border-t border-gray-200";
 
         // 토글 버튼
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'sources-toggle';
+        const toggleBtn = document.createElement("button");
+        toggleBtn.className = "sources-toggle";
         toggleBtn.innerHTML = `<span>📚 참고 문서 (${sources.length}개)</span><span class="arrow">▼</span>`;
 
         // 소스 컨테이너
-        const sourcesContainer = document.createElement('div');
-        sourcesContainer.className = 'sources-container mt-2';
+        const sourcesContainer = document.createElement("div");
+        sourcesContainer.className = "sources-container mt-2";
 
         sources.forEach(function (src) {
-          const sourceItem = document.createElement('div');
-          sourceItem.className = 'source-item';
+          const sourceItem = document.createElement("div");
+          sourceItem.className = "source-item";
 
           // 관련도 점수 계산 (0-1 → 퍼센트)
           const score = src.relevance_score || src.score || 0;
           const scorePercent = Math.round(score * 100);
-          const scoreClass = scorePercent >= 80 ? 'high' : scorePercent >= 50 ? 'medium' : 'low';
+          const scoreClass =
+            scorePercent >= 80 ? "high" : scorePercent >= 50 ? "medium" : "low";
 
           // 문서 제목
-          const title = src.document_title || src.document_name || src.title || 'Document';
+          const title =
+            src.document_title || src.document_name || src.title || "Document";
           // GAS 환경에서 '#'는 ERR_FAILED를 유발하므로 javascript:void(0) 사용
-          const driveLink = src.drive_link || src.url || 'javascript:void(0)';
+          const driveLink = src.drive_link || src.url || "javascript:void(0)";
 
           sourceItem.innerHTML = `
           <a href="${driveLink}" target="_blank" class="source-link">${escapeHtml(title)}</a>
           <span class="source-score ${scoreClass}">${scorePercent}%</span>
-          ${src.section_header ? `<div class="source-section">📑 ${escapeHtml(src.section_header)}</div>` : ''}
+          ${src.section_header ? `<div class="source-section">📑 ${escapeHtml(src.section_header)}</div>` : ""}
         `;
 
           sourcesContainer.appendChild(sourceItem);
         });
 
         // 토글 이벤트
-        toggleBtn.addEventListener('click', function () {
-          this.classList.toggle('expanded');
-          sourcesContainer.classList.toggle('expanded');
+        toggleBtn.addEventListener("click", function () {
+          this.classList.toggle("expanded");
+          sourcesContainer.classList.toggle("expanded");
         });
 
         sourcesWrapper.appendChild(toggleBtn);
@@ -404,9 +432,9 @@
       }
 
       // 메타데이터 표시 (봇 응답만)
-      if (role === 'assistant' && metadata) {
-        const metaDiv = document.createElement('div');
-        metaDiv.className = 'chat-meta';
+      if (role === "assistant" && metadata) {
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "chat-meta";
 
         const metaParts = [];
         if (metadata.latency) {
@@ -419,7 +447,7 @@
           metaParts.push(`📊 ${metadata.tokensUsed} tokens`);
         }
 
-        metaDiv.textContent = metaParts.join(' • ');
+        metaDiv.textContent = metaParts.join(" • ");
         bubble.appendChild(metaDiv);
       }
     }
@@ -436,28 +464,33 @@
   // 코드 블록 개선 함수
   function enhanceCodeBlocks(html) {
     // <pre><code class="language-xxx"> 패턴 찾기
-    return html.replace(/<pre><code class="language-(\w+)">/g, function (match, lang) {
-      return `<pre><span class="code-lang">${lang}</span><button class="copy-btn" onclick="copyCode(this)">📋 Copy</button><code class="language-${lang} hljs">`;
-    }).replace(/<pre><code>/g, function () {
-      return '<pre><button class="copy-btn" onclick="copyCode(this)">📋 Copy</button><code class="hljs">';
-    });
+    return html
+      .replace(/<pre><code class="language-(\w+)">/g, function (match, lang) {
+        return `<pre><span class="code-lang">${lang}</span><button class="copy-btn" onclick="copyCode(this)">📋 Copy</button><code class="language-${lang} hljs">`;
+      })
+      .replace(/<pre><code>/g, function () {
+        return '<pre><button class="copy-btn" onclick="copyCode(this)">📋 Copy</button><code class="hljs">';
+      });
   }
 
   // 코드 복사 함수
   function copyCode(btn) {
     const pre = btn.parentElement;
-    const code = pre.querySelector('code');
+    const code = pre.querySelector("code");
     const text = code.textContent;
 
-    navigator.clipboard.writeText(text).then(function () {
-      const originalText = btn.textContent;
-      btn.textContent = '✓ Copied!';
-      setTimeout(function () {
-        btn.textContent = originalText;
-      }, 2000);
-    }).catch(function (err) {
-      showToast('복사 실패: ' + err, 'error');
-    });
+    navigator.clipboard
+      .writeText(text)
+      .then(function () {
+        const originalText = btn.textContent;
+        btn.textContent = "✓ Copied!";
+        setTimeout(function () {
+          btn.textContent = originalText;
+        }, 2000);
+      })
+      .catch(function (err) {
+        showToast("복사 실패: " + err, "error");
+      });
   }
 
   function removeChatMessage(messageId) {
@@ -468,11 +501,11 @@
   }
 
   function clearChat() {
-    if (!confirm('대화 기록을 모두 삭제하시겠습니까?')) {
+    if (!confirm("대화 기록을 모두 삭제하시겠습니까?")) {
       return;
     }
 
-    const container = document.getElementById('chat-history');
+    const container = document.getElementById("chat-history");
     container.innerHTML = `
     <div class="text-center text-gray-500 py-8">
       <span class="text-4xl block mb-2">🤖</span>
@@ -484,11 +517,11 @@
     // 세션 삭제
     if (State.chatSessionId) {
       google.script.run.apiDeleteChatHistory(State.chatSessionId);
-      google.script.run.deleteUserProperty('chat_session_id');
+      google.script.run.deleteUserProperty("chat_session_id");
       State.chatSessionId = null;
     }
 
-    showToast('대화가 초기화되었습니다.', 'success');
+    showToast("대화가 초기화되었습니다.", "success");
   }
 
   // ============================================
@@ -499,67 +532,78 @@
 
   function initDocsTab() {
     // 템플릿 검사 버튼
-    document.getElementById('inspect-template-btn').addEventListener('click', inspectTemplate);
+    document
+      .getElementById("inspect-template-btn")
+      .addEventListener("click", inspectTemplate);
 
     // 템플릿 ID 변경 시 검사 버튼 활성화
-    document.getElementById('template-doc-id').addEventListener('input', function () {
-      document.getElementById('inspect-template-btn').disabled = !this.value;
-    });
+    document
+      .getElementById("template-doc-id")
+      .addEventListener("input", function () {
+        document.getElementById("inspect-template-btn").disabled = !this.value;
+      });
 
     // 결과지 생성 버튼
-    document.getElementById('generate-minutes-btn').addEventListener('click', generateMinutes);
+    document
+      .getElementById("generate-minutes-btn")
+      .addEventListener("click", generateMinutes);
 
     // 링크 복사 버튼
-    document.getElementById('minutes-copy-link-btn')?.addEventListener('click', function () {
-      const link = document.getElementById('minutes-result-link').href;
-      copyToClipboard(link, '결과지 링크가 복사되었습니다.');
-    });
+    document
+      .getElementById("minutes-copy-link-btn")
+      ?.addEventListener("click", function () {
+        const link = document.getElementById("minutes-result-link").href;
+        copyToClipboard(link, "결과지 링크가 복사되었습니다.");
+      });
 
     // 오늘 날짜 기본값
-    document.getElementById('meeting-date').valueAsDate = new Date();
-    
+    document.getElementById("meeting-date").valueAsDate = new Date();
+
     // 인수인계서 관련 이벤트 리스너 (Docs 탭으로 이동됨)
-    document.getElementById('generate-handover-btn')?.addEventListener('click', generateHandover);
-    document.getElementById('handover-copy-link-btn')?.addEventListener('click', function () {
-      const link = document.getElementById('handover-result-link').href;
-      copyToClipboard(link, '인수인계서 링크가 복사되었습니다.');
-    });
-    
+    document
+      .getElementById("generate-handover-btn")
+      ?.addEventListener("click", generateHandover);
+    document
+      .getElementById("handover-copy-link-btn")
+      ?.addEventListener("click", function () {
+        const link = document.getElementById("handover-result-link").href;
+        copyToClipboard(link, "인수인계서 링크가 복사되었습니다.");
+      });
+
     // 권한에 따라 인수인계서 섹션 표시/숨김
     checkHandoverAccess();
   }
-  
+
   /**
    * 인수인계서 생성 권한 확인 및 섹션 표시
    */
   function checkHandoverAccess() {
     google.script.run
       .withSuccessHandler(function (result) {
-        const handoverSection = document.getElementById('handover-section');
+        const handoverSection = document.getElementById("handover-section");
         if (handoverSection) {
           if (result && result.canCreateHandover) {
-            handoverSection.classList.remove('hidden');
+            handoverSection.classList.remove("hidden");
           } else {
-            handoverSection.classList.add('hidden');
+            handoverSection.classList.add("hidden");
           }
         }
       })
       .withFailureHandler(function (error) {
-        console.error('권한 확인 실패:', error);
+        console.error("권한 확인 실패:", error);
         // 실패 시 숨김 유지
       })
       .getUserLevel();
   }
-  }
 
   function inspectTemplate() {
-    const templateId = document.getElementById('template-doc-id').value;
+    const templateId = document.getElementById("template-doc-id").value;
     if (!templateId) {
-      showToast('템플릿을 먼저 선택해주세요.', 'warning');
+      showToast("템플릿을 먼저 선택해주세요.", "warning");
       return;
     }
 
-    showLoading(true, '템플릿 검사 중...');
+    showLoading(true, "템플릿 검사 중...");
 
     google.script.run
       .withSuccessHandler(function (result) {
@@ -568,87 +612,94 @@
         if (result.success) {
           const placeholders = result.uniqueNames;
           if (placeholders.length > 0) {
-            alert('📋 발견된 Placeholder (' + placeholders.length + '개):\n\n' + placeholders.map(p => '• {' + p + '}').join('\n'));
+            alert(
+              "📋 발견된 Placeholder (" +
+                placeholders.length +
+                "개):\n\n" +
+                placeholders.map((p) => "• {" + p + "}").join("\n"),
+            );
           } else {
-            alert('⚠️ Placeholder가 발견되지 않았습니다.\n\n템플릿에 {report_1_result} 형식의 placeholder를 추가해주세요.');
+            alert(
+              "⚠️ Placeholder가 발견되지 않았습니다.\n\n템플릿에 {report_1_result} 형식의 placeholder를 추가해주세요.",
+            );
           }
         } else {
-          showToast('템플릿 검사 실패: ' + result.error, 'error');
+          showToast("템플릿 검사 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
         showLoading(false);
-        showToast('오류: ' + error.message, 'error');
+        showToast("오류: " + error.message, "error");
       })
       .extractPlaceholders(templateId);
   }
 
   function generateMinutes() {
-    const agendaDocId = document.getElementById('agenda-doc-id').value;
-    const transcriptDocId = document.getElementById('transcript-doc-id').value;
-    const templateDocId = document.getElementById('template-doc-id').value;
-    const meetingName = document.getElementById('meeting-name').value;
-    const meetingDate = document.getElementById('meeting-date').value;
-    const outputFolderId = document.getElementById('output-folder-id').value;
+    const agendaDocId = document.getElementById("agenda-doc-id").value;
+    const transcriptDocId = document.getElementById("transcript-doc-id").value;
+    const templateDocId = document.getElementById("template-doc-id").value;
+    const meetingName = document.getElementById("meeting-name").value;
+    const meetingDate = document.getElementById("meeting-date").value;
+    const outputFolderId = document.getElementById("output-folder-id").value;
 
     // 유효성 검사
     if (!agendaDocId) {
-      showToast('안건지를 선택해주세요.', 'warning');
+      showToast("안건지를 선택해주세요.", "warning");
       return;
     }
     // 속기록 필수 검사
-    if (!transcriptDocId || transcriptDocId.trim() === '') {
-      showToast('속기록 문서를 선택해주세요. (필수)', 'warning');
+    if (!transcriptDocId || transcriptDocId.trim() === "") {
+      showToast("속기록 문서를 선택해주세요. (필수)", "warning");
       return;
     }
     if (!meetingName) {
-      showToast('회의명을 입력해주세요.', 'warning');
+      showToast("회의명을 입력해주세요.", "warning");
       return;
     }
     if (!meetingDate) {
-      showToast('회의일자를 선택해주세요.', 'warning');
+      showToast("회의일자를 선택해주세요.", "warning");
       return;
     }
 
     // 버튼 비활성화
-    const btn = document.getElementById('generate-minutes-btn');
+    const btn = document.getElementById("generate-minutes-btn");
     setButtonLoading(btn, true);
 
     // 진행 상태 표시
-    const progressEl = document.getElementById('minutes-progress');
-    const resultEl = document.getElementById('minutes-result');
-    progressEl.classList.remove('hidden');
-    resultEl.classList.add('hidden');
+    const progressEl = document.getElementById("minutes-progress");
+    const resultEl = document.getElementById("minutes-result");
+    progressEl.classList.remove("hidden");
+    resultEl.classList.add("hidden");
 
     // 타이머 시작
     minutesStartTime = Date.now();
-    startElapsedTimer('minutes');
+    startElapsedTimer("minutes");
 
     // 단계 초기화
-    resetProgressSteps('minutes');
-    updateProgressStep('minutes', 'parse', 'active');
-    updateProgress('minutes', 5, '문서 파싱 중...');
+    resetProgressSteps("minutes");
+    updateProgressStep("minutes", "parse", "active");
+    updateProgress("minutes", 5, "문서 파싱 중...");
 
     // API 호출
     google.script.run
       .withSuccessHandler(function (result) {
         if (result.success) {
           // Polling 시작
-          startPolling('minutes', result.data.task_id, function (status) {
+          startPolling("minutes", result.data.task_id, function (status) {
             handleMinutesStatus(status, btn);
           });
         } else {
-          stopElapsedTimer('minutes');
+          stopElapsedTimer("minutes");
           setButtonLoading(btn, false);
-          progressEl.classList.add('hidden');
-          showToast('요청 실패: ' + result.error, 'error');
+          progressEl.classList.add("hidden");
+          showToast("요청 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
-        stopElapsedTimer('minutes');
+        stopElapsedTimer("minutes");
         setButtonLoading(btn, false);
-        progressEl.classList.add('hidden');
-        showToast('오류: ' + error.message, 'error');
+        progressEl.classList.add("hidden");
+        showToast("오류: " + error.message, "error");
       })
       .apiGenerateMinutes({
         agendaDocId: agendaDocId,
@@ -656,7 +707,7 @@
         templateDocId: templateDocId || null,
         meetingName: meetingName,
         meetingDate: meetingDate,
-        outputFolderId: outputFolderId || null
+        outputFolderId: outputFolderId || null,
       });
   }
 
@@ -664,49 +715,51 @@
     const progress = status.progress || 0;
     const step = status.step || status.status;
 
-    updateProgress('minutes', progress, step);
+    updateProgress("minutes", progress, step);
 
     // 단계별 UI 업데이트
-    if (progress >= 10) updateProgressStep('minutes', 'parse', 'completed');
-    if (progress >= 25) updateProgressStep('minutes', 'analyze', 'active');
+    if (progress >= 10) updateProgressStep("minutes", "parse", "completed");
+    if (progress >= 25) updateProgressStep("minutes", "analyze", "active");
     if (progress >= 40) {
-      updateProgressStep('minutes', 'analyze', 'completed');
-      updateProgressStep('minutes', 'generate', 'active');
+      updateProgressStep("minutes", "analyze", "completed");
+      updateProgressStep("minutes", "generate", "active");
     }
     if (progress >= 80) {
-      updateProgressStep('minutes', 'generate', 'completed');
-      updateProgressStep('minutes', 'finalize', 'active');
+      updateProgressStep("minutes", "generate", "completed");
+      updateProgressStep("minutes", "finalize", "active");
     }
 
-    if (status.status === 'SUCCESS') {
-      stopPolling('minutes');
-      stopElapsedTimer('minutes');
+    if (status.status === "SUCCESS") {
+      stopPolling("minutes");
+      stopElapsedTimer("minutes");
       setButtonLoading(btn, false);
 
       // 모든 단계 완료 표시
-      updateProgressStep('minutes', 'finalize', 'completed');
+      updateProgressStep("minutes", "finalize", "completed");
 
-      document.getElementById('minutes-progress').classList.add('hidden');
-      const resultEl = document.getElementById('minutes-result');
-      resultEl.classList.remove('hidden');
+      document.getElementById("minutes-progress").classList.add("hidden");
+      const resultEl = document.getElementById("minutes-result");
+      resultEl.classList.remove("hidden");
 
-      const link = document.getElementById('minutes-result-link');
-      const outputLink = status.result?.output_doc_link || status.output_doc_link || '#';
+      const link = document.getElementById("minutes-result-link");
+      const outputLink =
+        status.result?.output_doc_link || status.output_doc_link || "#";
       link.href = outputLink;
 
       // 소요 시간 표시
       const elapsed = Math.round((Date.now() - minutesStartTime) / 1000);
-      document.getElementById('minutes-result-time').textContent = `소요 시간: ${formatElapsedTime(elapsed)}`;
+      document.getElementById("minutes-result-time").textContent =
+        `소요 시간: ${formatElapsedTime(elapsed)}`;
 
-      showToast('결과지가 생성되었습니다!', 'success');
-    } else if (status.status === 'FAILURE') {
-      stopPolling('minutes');
-      stopElapsedTimer('minutes');
+      showToast("결과지가 생성되었습니다!", "success");
+    } else if (status.status === "FAILURE") {
+      stopPolling("minutes");
+      stopElapsedTimer("minutes");
       setButtonLoading(btn, false);
-      document.getElementById('minutes-progress').classList.add('hidden');
+      document.getElementById("minutes-progress").classList.add("hidden");
 
-      showToast('생성 실패: ' + (status.error || 'Unknown error'), 'error');
-      alert('❌ 생성 실패\n\n' + (status.error || 'Unknown error'));
+      showToast("생성 실패: " + (status.error || "Unknown error"), "error");
+      alert("❌ 생성 실패\n\n" + (status.error || "Unknown error"));
     }
   }
 
@@ -716,122 +769,141 @@
   let extractedTodos = [];
 
   function initCalendarTab() {
-    document.getElementById('extract-todos-btn').addEventListener('click', extractTodos);
-    document.getElementById('register-todos-btn').addEventListener('click', registerTodos);
-    document.getElementById('select-all-todos').addEventListener('change', toggleAllTodos);
-    
+    document
+      .getElementById("extract-todos-btn")
+      .addEventListener("click", extractTodos);
+    document
+      .getElementById("register-todos-btn")
+      .addEventListener("click", registerTodos);
+    document
+      .getElementById("select-all-todos")
+      .addEventListener("change", toggleAllTodos);
+
     // 캘린더 권한 확인 버튼
-    document.getElementById('check-calendar-access-btn').addEventListener('click', checkCalendarAccess);
+    document
+      .getElementById("check-calendar-access-btn")
+      .addEventListener("click", checkCalendarAccess);
   }
 
   /**
    * 선택한 캘린더에 대한 쓰기 권한 확인
    */
   function checkCalendarAccess() {
-    const calendarId = document.getElementById('target-calendar-id').value;
-    const btn = document.getElementById('check-calendar-access-btn');
+    const calendarId = document.getElementById("target-calendar-id").value;
+    const btn = document.getElementById("check-calendar-access-btn");
     const originalText = btn.textContent;
-    btn.textContent = '확인 중...';
+    btn.textContent = "확인 중...";
     btn.disabled = true;
 
     google.script.run
-      .withSuccessHandler(function(result) {
+      .withSuccessHandler(function (result) {
         btn.textContent = originalText;
         btn.disabled = false;
-        
+
         if (result.success) {
           if (result.canWrite) {
-            showToast(`✅ "${result.calendarName}" 캘린더에 쓰기 권한이 있습니다. (${result.accessLevel})`, 'success');
+            showToast(
+              `✅ "${result.calendarName}" 캘린더에 쓰기 권한이 있습니다. (${result.accessLevel})`,
+              "success",
+            );
           } else {
-            showToast(`⚠️ "${result.calendarName}" 캘린더에 쓰기 권한이 없습니다. (${result.accessLevel})`, 'warning');
+            showToast(
+              `⚠️ "${result.calendarName}" 캘린더에 쓰기 권한이 없습니다. (${result.accessLevel})`,
+              "warning",
+            );
           }
         } else {
-          showToast('❌ ' + result.error, 'error');
+          showToast("❌ " + result.error, "error");
         }
       })
-      .withFailureHandler(function(error) {
+      .withFailureHandler(function (error) {
         btn.textContent = originalText;
         btn.disabled = false;
-        showToast('권한 확인 실패: ' + error.message, 'error');
+        showToast("권한 확인 실패: " + error.message, "error");
       })
       .checkCalendarAccess(calendarId);
   }
 
   function extractTodos() {
-    const sourceDocId = document.getElementById('calendar-source-doc-id').value;
+    const sourceDocId = document.getElementById("calendar-source-doc-id").value;
 
     if (!sourceDocId) {
-      showToast('결과지를 선택해주세요.', 'warning');
+      showToast("결과지를 선택해주세요.", "warning");
       return;
     }
 
-    const btn = document.getElementById('extract-todos-btn');
+    const btn = document.getElementById("extract-todos-btn");
     setButtonLoading(btn, true);
 
     // 진행 상태 표시
-    document.getElementById('extract-progress').classList.remove('hidden');
-    document.getElementById('todos-section').classList.add('hidden');
-    document.getElementById('register-result').classList.add('hidden');
+    document.getElementById("extract-progress").classList.remove("hidden");
+    document.getElementById("todos-section").classList.add("hidden");
+    document.getElementById("register-result").classList.add("hidden");
 
     google.script.run
       .withSuccessHandler(function (result) {
         setButtonLoading(btn, false);
-        document.getElementById('extract-progress').classList.add('hidden');
+        document.getElementById("extract-progress").classList.add("hidden");
 
         if (result.success) {
           extractedTodos = result.data.todos || [];
           const count = result.data.total_count || extractedTodos.length;
 
           renderTodos(extractedTodos);
-          document.getElementById('todos-section').classList.remove('hidden');
-          document.getElementById('todos-count').textContent = count;
+          document.getElementById("todos-section").classList.remove("hidden");
+          document.getElementById("todos-count").textContent = count;
           updateSelectedCount();
 
-          showToast('할일 ' + count + '개 추출 완료', 'success');
+          showToast("할일 " + count + "개 추출 완료", "success");
         } else {
-          showToast('추출 실패: ' + result.error, 'error');
+          showToast("추출 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
         setButtonLoading(btn, false);
-        document.getElementById('extract-progress').classList.add('hidden');
-        showToast('오류: ' + error.message, 'error');
+        document.getElementById("extract-progress").classList.add("hidden");
+        showToast("오류: " + error.message, "error");
       })
       .apiExtractTodos(sourceDocId, true);
   }
 
   function renderTodos(todos) {
-    const container = document.getElementById('todos-list');
-    container.innerHTML = '';
+    const container = document.getElementById("todos-list");
+    container.innerHTML = "";
 
     if (todos.length === 0) {
-      container.innerHTML = '<p class="text-center text-gray-500 py-4">추출된 할일이 없습니다.</p>';
+      container.innerHTML =
+        '<p class="text-center text-gray-500 py-4">추출된 할일이 없습니다.</p>';
       return;
     }
 
     // 날짜가 없는 경우를 위한 기본값: 오늘로부터 1주일 뒤
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 7);
-    const defaultDateStr = defaultDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    const defaultDateStr = defaultDate.toISOString().split("T")[0]; // YYYY-MM-DD 형식
 
     todos.forEach(function (todo, index) {
-      const card = document.createElement('div');
-      card.className = 'todo-card bg-white border border-gray-200 rounded-lg p-3';
+      const card = document.createElement("div");
+      card.className =
+        "todo-card bg-white border border-gray-200 rounded-lg p-3";
       card.dataset.index = index;
 
       // 날짜 처리: 없으면 1주일 뒤로 기본 설정
       const todoDate = todo.parsed_date || defaultDateStr;
       const isDefaultDate = !todo.parsed_date;
-      
+
       // 날짜가 과거인지 확인
-      const isPastDate = new Date(todoDate) < new Date(new Date().toDateString());
-      
+      const isPastDate =
+        new Date(todoDate) < new Date(new Date().toDateString());
+
       // 날짜 라벨 구성
-      let dateLabel = '날짜';
+      let dateLabel = "날짜";
       if (isDefaultDate) {
-        dateLabel += ' <span class="text-xs text-blue-500 ml-1">(기본: 1주 후)</span>';
+        dateLabel +=
+          ' <span class="text-xs text-blue-500 ml-1">(기본: 1주 후)</span>';
       } else if (isPastDate) {
-        dateLabel += ' <span class="text-xs text-orange-500 ml-1">(과거)</span>';
+        dateLabel +=
+          ' <span class="text-xs text-orange-500 ml-1">(과거)</span>';
       }
 
       card.innerHTML = `
@@ -844,18 +916,20 @@
       <div class="grid grid-cols-2 gap-2 ml-6">
         <div>
           <label class="text-xs text-gray-500">${dateLabel}</label>
-          <input type="date" class="todo-date w-full border border-gray-200 rounded px-2 py-1 text-xs ${isPastDate ? 'border-orange-300' : ''} ${isDefaultDate ? 'border-blue-300' : ''}" value="${todoDate}" data-field="date">
+          <input type="date" class="todo-date w-full border border-gray-200 rounded px-2 py-1 text-xs ${isPastDate ? "border-orange-300" : ""} ${isDefaultDate ? "border-blue-300" : ""}" value="${todoDate}" data-field="date">
         </div>
         <div>
           <label class="text-xs text-gray-500">담당자 (이메일)</label>
-          <input type="email" class="todo-assignee w-full border border-gray-200 rounded px-2 py-1 text-xs" placeholder="email@example.com" value="${todo.assignee || ''}" data-field="assignee">
+          <input type="email" class="todo-assignee w-full border border-gray-200 rounded px-2 py-1 text-xs" placeholder="email@example.com" value="${todo.assignee || ""}" data-field="assignee">
         </div>
       </div>
-      ${todo.context ? `<p class="text-xs text-gray-400 mt-2 ml-6 truncate" title="${escapeHtml(todo.context)}">${escapeHtml(todo.context)}</p>` : ''}
+      ${todo.context ? `<p class="text-xs text-gray-400 mt-2 ml-6 truncate" title="${escapeHtml(todo.context)}">${escapeHtml(todo.context)}</p>` : ""}
     `;
 
       // 체크박스 변경 이벤트
-      card.querySelector('.todo-checkbox').addEventListener('change', updateSelectedCount);
+      card
+        .querySelector(".todo-checkbox")
+        .addEventListener("change", updateSelectedCount);
 
       container.appendChild(card);
     });
@@ -865,96 +939,102 @@
 
   function toggleAllTodos(e) {
     const checked = e.target.checked;
-    document.querySelectorAll('.todo-checkbox').forEach(function (cb) {
+    document.querySelectorAll(".todo-checkbox").forEach(function (cb) {
       cb.checked = checked;
     });
     updateSelectedCount();
   }
 
   function updateSelectedCount() {
-    const total = document.querySelectorAll('.todo-checkbox').length;
-    const selected = document.querySelectorAll('.todo-checkbox:checked').length;
+    const total = document.querySelectorAll(".todo-checkbox").length;
+    const selected = document.querySelectorAll(".todo-checkbox:checked").length;
 
-    const countEl = document.getElementById('selected-todos-count');
+    const countEl = document.getElementById("selected-todos-count");
     if (countEl) {
       countEl.textContent = selected;
     }
 
     // 전체 선택 체크박스 상태 동기화
-    const selectAllEl = document.getElementById('select-all-todos');
+    const selectAllEl = document.getElementById("select-all-todos");
     if (selectAllEl) {
       selectAllEl.checked = selected === total && total > 0;
       selectAllEl.indeterminate = selected > 0 && selected < total;
     }
 
     // 등록 버튼 활성화/비활성화
-    const registerBtn = document.getElementById('register-todos-btn');
+    const registerBtn = document.getElementById("register-todos-btn");
     if (registerBtn) {
       registerBtn.disabled = selected === 0;
     }
   }
 
   function registerTodos() {
-    const cards = document.querySelectorAll('.todo-card');
+    const cards = document.querySelectorAll(".todo-card");
     const todosToRegister = [];
     const invalidItems = [];
-    
+
     // 대상 캘린더 ID 가져오기
-    const calendarId = document.getElementById('target-calendar-id').value;
+    const calendarId = document.getElementById("target-calendar-id").value;
 
     cards.forEach(function (card) {
-      const checkbox = card.querySelector('.todo-checkbox');
+      const checkbox = card.querySelector(".todo-checkbox");
       if (!checkbox.checked) return;
 
-      const summary = card.querySelector('.todo-summary').value.trim();
-      const date = card.querySelector('.todo-date').value;
-      const assignee = card.querySelector('.todo-assignee').value.trim();
+      const summary = card.querySelector(".todo-summary").value.trim();
+      const date = card.querySelector(".todo-date").value;
+      const assignee = card.querySelector(".todo-assignee").value.trim();
       const index = parseInt(card.dataset.index);
 
       // 유효성 검사
       if (!summary) {
-        invalidItems.push({ index, reason: '할일 내용이 비어있습니다.' });
+        invalidItems.push({ index, reason: "할일 내용이 비어있습니다." });
         return;
       }
       if (!date) {
-        invalidItems.push({ index, reason: '날짜가 선택되지 않았습니다.' });
+        invalidItems.push({ index, reason: "날짜가 선택되지 않았습니다." });
         return;
       }
       if (assignee && !isValidEmail(assignee)) {
-        invalidItems.push({ index, reason: '유효하지 않은 이메일입니다.' });
+        invalidItems.push({ index, reason: "유효하지 않은 이메일입니다." });
         return;
       }
 
       todosToRegister.push({
         index: index,
         summary: summary,
-        dtStart: date + 'T09:00:00',
-        dtEnd: date + 'T10:00:00',
+        dtStart: date + "T09:00:00",
+        dtEnd: date + "T10:00:00",
         assigneeEmail: assignee || null,
-        description: 'Council-AI에서 추출된 할일',
-        calendarId: calendarId  // 대상 캘린더 ID 추가
+        description: "Council-AI에서 추출된 할일",
+        calendarId: calendarId, // 대상 캘린더 ID 추가
       });
     });
 
     // 유효하지 않은 항목 경고
     if (invalidItems.length > 0) {
-      const warnings = invalidItems.map(item => `• 항목 ${item.index + 1}: ${item.reason}`).join('\n');
-      alert('⚠️ 다음 항목에 문제가 있습니다:\n\n' + warnings + '\n\n해당 항목은 제외하고 등록합니다.');
+      const warnings = invalidItems
+        .map((item) => `• 항목 ${item.index + 1}: ${item.reason}`)
+        .join("\n");
+      alert(
+        "⚠️ 다음 항목에 문제가 있습니다:\n\n" +
+          warnings +
+          "\n\n해당 항목은 제외하고 등록합니다.",
+      );
     }
 
     if (todosToRegister.length === 0) {
-      showToast('등록할 유효한 항목이 없습니다.', 'warning');
+      showToast("등록할 유효한 항목이 없습니다.", "warning");
       return;
     }
 
-    const btn = document.getElementById('register-todos-btn');
+    const btn = document.getElementById("register-todos-btn");
     setButtonLoading(btn, true);
 
     // 진행 상태 UI 표시
-    const progressEl = document.getElementById('register-progress');
-    const resultEl = document.getElementById('register-result');
-    progressEl.classList.remove('hidden');
-    resultEl.classList.add('hidden');
+    const progressEl = document.getElementById("register-progress");
+    const resultEl = document.getElementById("register-result");
+    progressEl.classList.remove("hidden");
+    resultEl.classList.add("hidden");
 
     const total = todosToRegister.length;
     let completed = 0;
@@ -964,28 +1044,34 @@
 
     function updateRegisterProgress() {
       const progress = Math.round((completed / total) * 100);
-      document.getElementById('register-progress-bar').style.width = progress + '%';
-      document.getElementById('register-progress-count').textContent = `${completed}/${total}`;
-      document.getElementById('register-status-text').textContent = `등록 중... (${completed}/${total})`;
+      document.getElementById("register-progress-bar").style.width =
+        progress + "%";
+      document.getElementById("register-progress-count").textContent =
+        `${completed}/${total}`;
+      document.getElementById("register-status-text").textContent =
+        `등록 중... (${completed}/${total})`;
     }
 
     function registerNext(index) {
       if (index >= todosToRegister.length) {
         // 완료
         setButtonLoading(btn, false);
-        progressEl.classList.add('hidden');
-        resultEl.classList.remove('hidden');
+        progressEl.classList.add("hidden");
+        resultEl.classList.remove("hidden");
 
-        document.getElementById('register-success-count').textContent = succeeded;
-        document.getElementById('register-fail-count').textContent = failed;
+        document.getElementById("register-success-count").textContent =
+          succeeded;
+        document.getElementById("register-fail-count").textContent = failed;
 
         // 성공한 항목 체크 해제 (시각적 피드백)
         todosToRegister.forEach(function (todo) {
           if (!failedItems.includes(todo.index)) {
-            const card = document.querySelector(`.todo-card[data-index="${todo.index}"]`);
+            const card = document.querySelector(
+              `.todo-card[data-index="${todo.index}"]`,
+            );
             if (card) {
-              card.classList.add('bg-green-50', 'border-green-200');
-              card.querySelector('.todo-checkbox').checked = false;
+              card.classList.add("bg-green-50", "border-green-200");
+              card.querySelector(".todo-checkbox").checked = false;
             }
           }
         });
@@ -993,9 +1079,9 @@
         updateSelectedCount();
 
         if (failed > 0) {
-          showToast(`${succeeded}개 성공, ${failed}개 실패`, 'warning');
+          showToast(`${succeeded}개 성공, ${failed}개 실패`, "warning");
         } else {
-          showToast(`${succeeded}개 캘린더에 등록 완료!`, 'success');
+          showToast(`${succeeded}개 캘린더에 등록 완료!`, "success");
         }
         return;
       }
@@ -1007,14 +1093,17 @@
           completed++;
           if (result.success) {
             succeeded++;
-            console.log('[Calendar] 이벤트 생성 성공:', result);
+            console.log("[Calendar] 이벤트 생성 성공:", result);
           } else {
             failed++;
             failedItems.push(todo.index);
             // 실패 이유 표시 (권한 없음 등)
-            console.error('[Calendar] 이벤트 생성 실패:', result.error);
-            if (result.error && result.error.includes('쓰기 권한')) {
-              showToast('⚠️ 캘린더 쓰기 권한이 없습니다. 캘린더 관리자에게 권한을 요청하세요.', 'error');
+            console.error("[Calendar] 이벤트 생성 실패:", result.error);
+            if (result.error && result.error.includes("쓰기 권한")) {
+              showToast(
+                "⚠️ 캘린더 쓰기 권한이 없습니다. 캘린더 관리자에게 권한을 요청하세요.",
+                "error",
+              );
             }
           }
           updateRegisterProgress();
@@ -1044,112 +1133,120 @@
   let handoverStartTime = null;
 
   function initAdminTab() {
-    document.getElementById('start-ingest-btn').addEventListener('click', startIngestion);
-    document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
-    document.getElementById('refresh-docs-btn').addEventListener('click', loadDocuments);
-    
+    document
+      .getElementById("start-ingest-btn")
+      .addEventListener("click", startIngestion);
+    document
+      .getElementById("save-settings-btn")
+      .addEventListener("click", saveSettings);
+    document
+      .getElementById("refresh-docs-btn")
+      .addEventListener("click", loadDocuments);
+
     // Note: Handover 관련 이벤트 리스너는 initDocsTab()에서 처리 (Docs 탭으로 이동됨)
   }
 
   function startIngestion() {
-    const folderId = document.getElementById('ingest-folder-id').value;
+    const folderId = document.getElementById("ingest-folder-id").value;
 
     if (!folderId) {
-      showToast('학습 폴더를 선택해주세요.', 'warning');
+      showToast("학습 폴더를 선택해주세요.", "warning");
       return;
     }
 
-    const btn = document.getElementById('start-ingest-btn');
+    const btn = document.getElementById("start-ingest-btn");
     setButtonLoading(btn, true);
 
-    const progressEl = document.getElementById('ingest-progress');
-    progressEl.classList.remove('hidden');
-    document.getElementById('ingest-status-text').textContent = '학습 시작 중...';
+    const progressEl = document.getElementById("ingest-progress");
+    progressEl.classList.remove("hidden");
+    document.getElementById("ingest-status-text").textContent =
+      "학습 시작 중...";
 
     google.script.run
       .withSuccessHandler(function (result) {
         if (result.success) {
-          startPolling('ingest', result.data.task_id, function (status) {
-            document.getElementById('ingest-status-text').textContent = status.step || status.status;
+          startPolling("ingest", result.data.task_id, function (status) {
+            document.getElementById("ingest-status-text").textContent =
+              status.step || status.status;
 
-            if (status.status === 'SUCCESS') {
-              stopPolling('ingest');
+            if (status.status === "SUCCESS") {
+              stopPolling("ingest");
               setButtonLoading(btn, false);
-              progressEl.classList.add('hidden');
-              showToast('자료 학습이 완료되었습니다!', 'success');
+              progressEl.classList.add("hidden");
+              showToast("자료 학습이 완료되었습니다!", "success");
               loadDocuments();
-            } else if (status.status === 'FAILURE') {
-              stopPolling('ingest');
+            } else if (status.status === "FAILURE") {
+              stopPolling("ingest");
               setButtonLoading(btn, false);
-              progressEl.classList.add('hidden');
-              showToast('학습 실패: ' + status.error, 'error');
+              progressEl.classList.add("hidden");
+              showToast("학습 실패: " + status.error, "error");
             }
           });
         } else {
           setButtonLoading(btn, false);
-          progressEl.classList.add('hidden');
-          showToast('요청 실패: ' + result.error, 'error');
+          progressEl.classList.add("hidden");
+          showToast("요청 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
         setButtonLoading(btn, false);
-        progressEl.classList.add('hidden');
-        showToast('오류: ' + error.message, 'error');
+        progressEl.classList.add("hidden");
+        showToast("오류: " + error.message, "error");
       })
       .apiIngestFolder(folderId, { recursive: true }, 2);
   }
 
   function generateHandover() {
-    const year = parseInt(document.getElementById('handover-year').value);
-    const department = document.getElementById('handover-department').value;
-    const folderId = document.getElementById('handover-folder-id').value;
+    const year = parseInt(document.getElementById("handover-year").value);
+    const department = document.getElementById("handover-department").value;
+    const folderId = document.getElementById("handover-folder-id").value;
 
     // 유효성 검사
     if (!year || isNaN(year)) {
-      showToast('대상 연도를 선택해주세요.', 'warning');
+      showToast("대상 연도를 선택해주세요.", "warning");
       return;
     }
 
-    const btn = document.getElementById('generate-handover-btn');
+    const btn = document.getElementById("generate-handover-btn");
     setButtonLoading(btn, true);
 
-    const progressEl = document.getElementById('handover-progress');
-    const resultEl = document.getElementById('handover-result');
-    progressEl.classList.remove('hidden');
-    resultEl.classList.add('hidden');
+    const progressEl = document.getElementById("handover-progress");
+    const resultEl = document.getElementById("handover-result");
+    progressEl.classList.remove("hidden");
+    resultEl.classList.add("hidden");
 
     // 타이머 시작
     handoverStartTime = Date.now();
-    startElapsedTimer('handover');
+    startElapsedTimer("handover");
 
     // 단계 초기화
-    resetProgressSteps('handover');
-    updateProgressStep('handover', 'collect', 'active');
-    updateProgress('handover', 5, '관련 문서 수집 중...');
+    resetProgressSteps("handover");
+    updateProgressStep("handover", "collect", "active");
+    updateProgress("handover", 5, "관련 문서 수집 중...");
 
     google.script.run
       .withSuccessHandler(function (result) {
         if (result.success) {
-          startPolling('handover', result.data.task_id, function (status) {
+          startPolling("handover", result.data.task_id, function (status) {
             handleHandoverStatus(status, btn);
           });
         } else {
-          stopElapsedTimer('handover');
+          stopElapsedTimer("handover");
           setButtonLoading(btn, false);
-          progressEl.classList.add('hidden');
-          showToast('요청 실패: ' + result.error, 'error');
+          progressEl.classList.add("hidden");
+          showToast("요청 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
-        stopElapsedTimer('handover');
+        stopElapsedTimer("handover");
         setButtonLoading(btn, false);
-        progressEl.classList.add('hidden');
-        showToast('오류: ' + error.message, 'error');
+        progressEl.classList.add("hidden");
+        showToast("오류: " + error.message, "error");
       })
       .apiGenerateHandover({
         targetYear: year,
         department: department || null,
-        targetFolderId: folderId || null
+        targetFolderId: folderId || null,
       });
   }
 
@@ -1157,47 +1254,49 @@
     const progress = status.progress || 0;
     const step = status.step || status.status;
 
-    updateProgress('handover', progress, step);
+    updateProgress("handover", progress, step);
 
     // 단계별 UI 업데이트
-    if (progress >= 10) updateProgressStep('handover', 'collect', 'completed');
-    if (progress >= 25) updateProgressStep('handover', 'summarize', 'active');
+    if (progress >= 10) updateProgressStep("handover", "collect", "completed");
+    if (progress >= 25) updateProgressStep("handover", "summarize", "active");
     if (progress >= 50) {
-      updateProgressStep('handover', 'summarize', 'completed');
-      updateProgressStep('handover', 'generate', 'active');
+      updateProgressStep("handover", "summarize", "completed");
+      updateProgressStep("handover", "generate", "active");
     }
     if (progress >= 80) {
-      updateProgressStep('handover', 'generate', 'completed');
-      updateProgressStep('handover', 'finalize', 'active');
+      updateProgressStep("handover", "generate", "completed");
+      updateProgressStep("handover", "finalize", "active");
     }
 
-    if (status.status === 'SUCCESS') {
-      stopPolling('handover');
-      stopElapsedTimer('handover');
+    if (status.status === "SUCCESS") {
+      stopPolling("handover");
+      stopElapsedTimer("handover");
       setButtonLoading(btn, false);
 
       // 모든 단계 완료 표시
-      updateProgressStep('handover', 'finalize', 'completed');
+      updateProgressStep("handover", "finalize", "completed");
 
-      document.getElementById('handover-progress').classList.add('hidden');
-      const resultEl = document.getElementById('handover-result');
-      resultEl.classList.remove('hidden');
+      document.getElementById("handover-progress").classList.add("hidden");
+      const resultEl = document.getElementById("handover-result");
+      resultEl.classList.remove("hidden");
 
-      const link = document.getElementById('handover-result-link');
-      const outputLink = status.result?.output_doc_link || status.output_doc_link || '#';
+      const link = document.getElementById("handover-result-link");
+      const outputLink =
+        status.result?.output_doc_link || status.output_doc_link || "#";
       link.href = outputLink;
 
       // 소요 시간 표시
       const elapsed = Math.round((Date.now() - handoverStartTime) / 1000);
-      document.getElementById('handover-result-time').textContent = `소요 시간: ${formatElapsedTime(elapsed)}`;
+      document.getElementById("handover-result-time").textContent =
+        `소요 시간: ${formatElapsedTime(elapsed)}`;
 
-      showToast('인수인계서가 생성되었습니다!', 'success');
-    } else if (status.status === 'FAILURE') {
-      stopPolling('handover');
-      stopElapsedTimer('handover');
+      showToast("인수인계서가 생성되었습니다!", "success");
+    } else if (status.status === "FAILURE") {
+      stopPolling("handover");
+      stopElapsedTimer("handover");
       setButtonLoading(btn, false);
-      document.getElementById('handover-progress').classList.add('hidden');
-      showToast('생성 실패: ' + status.error, 'error');
+      document.getElementById("handover-progress").classList.add("hidden");
+      showToast("생성 실패: " + status.error, "error");
     }
   }
 
@@ -1205,20 +1304,21 @@
     google.script.run
       .withSuccessHandler(function (settings) {
         if (settings.apiBaseUrl) {
-          document.getElementById('settings-api-url').value = settings.apiBaseUrl;
+          document.getElementById("settings-api-url").value =
+            settings.apiBaseUrl;
         }
-        document.getElementById('settings-status').textContent =
-          settings.hasApiKey ? '✅ API Key 설정됨' : '⚠️ API Key 미설정';
+        document.getElementById("settings-status").textContent =
+          settings.hasApiKey ? "✅ API Key 설정됨" : "⚠️ API Key 미설정";
       })
       .getAdminSettings();
   }
 
   function saveSettings() {
-    const apiUrl = document.getElementById('settings-api-url').value;
-    const apiKey = document.getElementById('settings-api-key').value;
-    const pickerKey = document.getElementById('settings-picker-key').value;
+    const apiUrl = document.getElementById("settings-api-url").value;
+    const apiKey = document.getElementById("settings-api-key").value;
+    const pickerKey = document.getElementById("settings-picker-key").value;
 
-    const btn = document.getElementById('save-settings-btn');
+    const btn = document.getElementById("save-settings-btn");
     setButtonLoading(btn, true);
 
     google.script.run
@@ -1226,30 +1326,31 @@
         setButtonLoading(btn, false);
 
         if (result.success) {
-          showToast('설정이 저장되었습니다.', 'success');
+          showToast("설정이 저장되었습니다.", "success");
           loadSettings();
 
           // 입력 필드 초기화
-          document.getElementById('settings-api-key').value = '';
-          document.getElementById('settings-picker-key').value = '';
+          document.getElementById("settings-api-key").value = "";
+          document.getElementById("settings-picker-key").value = "";
         } else {
-          showToast('저장 실패: ' + result.error, 'error');
+          showToast("저장 실패: " + result.error, "error");
         }
       })
       .withFailureHandler(function (error) {
         setButtonLoading(btn, false);
-        showToast('오류: ' + error.message, 'error');
+        showToast("오류: " + error.message, "error");
       })
       .saveAdminSettings({
         apiBaseUrl: apiUrl,
         apiKey: apiKey || null,
-        pickerApiKey: pickerKey || null
+        pickerApiKey: pickerKey || null,
       });
   }
 
   function loadDocuments() {
-    const container = document.getElementById('documents-list');
-    container.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">불러오는 중...</p>';
+    const container = document.getElementById("documents-list");
+    container.innerHTML =
+      '<p class="text-xs text-gray-500 text-center py-4">불러오는 중...</p>';
 
     google.script.run
       .withSuccessHandler(function (result) {
@@ -1257,25 +1358,35 @@
           const docs = result.data.documents;
 
           if (docs.length === 0) {
-            container.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">학습된 문서가 없습니다.</p>';
+            container.innerHTML =
+              '<p class="text-xs text-gray-500 text-center py-4">학습된 문서가 없습니다.</p>';
             return;
           }
 
-          container.innerHTML = docs.map(function (doc) {
-            const statusIcon = doc.status === 'completed' ? '✅' : doc.status === 'processing' ? '⏳' : '❌';
-            return `
+          container.innerHTML = docs
+            .map(function (doc) {
+              const statusIcon =
+                doc.status === "completed"
+                  ? "✅"
+                  : doc.status === "processing"
+                    ? "⏳"
+                    : "❌";
+              return `
             <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
               <span class="text-xs truncate flex-1" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</span>
               <span class="text-xs ml-2">${statusIcon}</span>
             </div>
           `;
-          }).join('');
+            })
+            .join("");
         } else {
-          container.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">문서를 불러올 수 없습니다.</p>';
+          container.innerHTML =
+            '<p class="text-xs text-gray-500 text-center py-4">문서를 불러올 수 없습니다.</p>';
         }
       })
       .withFailureHandler(function () {
-        container.innerHTML = '<p class="text-xs text-red-500 text-center py-4">오류 발생</p>';
+        container.innerHTML =
+          '<p class="text-xs text-red-500 text-center py-4">오류 발생</p>';
       })
       .apiGetDocuments(0, 20);
   }
@@ -1284,16 +1395,16 @@
   // Google Picker
   // ============================================
   function loadPickerApi() {
-    gapi.load('picker', function () {
+    gapi.load("picker", function () {
       State.pickerLoaded = true;
-      console.log('[Council-AI] Picker API loaded');
+      console.log("[Council-AI] Picker API loaded");
       initPickerButtons();
     });
   }
 
   function initPickerButtons() {
-    document.querySelectorAll('.picker-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+    document.querySelectorAll(".picker-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
         const targetInput = this.dataset.target;
         const pickerType = this.dataset.type; // 'doc' or 'folder'
         openPicker(targetInput, pickerType);
@@ -1303,7 +1414,7 @@
 
   function openPicker(targetInputId, pickerType) {
     if (!State.pickerLoaded) {
-      showToast('Picker API 로딩 중...', 'warning');
+      showToast("Picker API 로딩 중...", "warning");
       return;
     }
 
@@ -1315,7 +1426,7 @@
         createPicker(targetInputId, pickerType);
       })
       .withFailureHandler(function (error) {
-        showToast('Picker 설정 오류: ' + error.message, 'error');
+        showToast("Picker 설정 오류: " + error.message, "error");
       })
       .getPickerConfig();
   }
@@ -1323,13 +1434,14 @@
   function createPicker(targetInputId, pickerType) {
     let view;
 
-    if (pickerType === 'folder') {
+    if (pickerType === "folder") {
       view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
         .setSelectFolderEnabled(true)
         .setIncludeFolders(true);
     } else {
-      view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
-        .setMimeTypes('application/vnd.google-apps.document');
+      view = new google.picker.DocsView(
+        google.picker.ViewId.DOCUMENTS,
+      ).setMimeTypes("application/vnd.google-apps.document");
     }
 
     // GAS 사이드바에서 Picker를 사용하려면 올바른 origin 설정이 필수
@@ -1339,7 +1451,7 @@
     const pickerBuilder = new google.picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(State.oauthToken)
-      .setOrigin(origin)  // GAS 환경에서 필수!
+      .setOrigin(origin) // GAS 환경에서 필수!
       .setCallback(function (data) {
         pickerCallback(data, targetInputId);
       });
@@ -1361,14 +1473,16 @@
       document.getElementById(targetInputId).value = doc.id;
 
       // 이름 표시
-      const nameEl = document.getElementById(targetInputId.replace('-id', '-name'));
+      const nameEl = document.getElementById(
+        targetInputId.replace("-id", "-name"),
+      );
       if (nameEl) {
         nameEl.textContent = doc.name;
       }
 
       // 템플릿 검사 버튼 활성화
-      if (targetInputId === 'template-doc-id') {
-        document.getElementById('inspect-template-btn').disabled = false;
+      if (targetInputId === "template-doc-id") {
+        document.getElementById("inspect-template-btn").disabled = false;
       }
     }
   }
@@ -1387,11 +1501,11 @@
           if (result.success) {
             callback(result.data);
           } else {
-            callback({ status: 'FAILURE', error: result.error });
+            callback({ status: "FAILURE", error: result.error });
           }
         })
         .withFailureHandler(function (error) {
-          callback({ status: 'FAILURE', error: error.message });
+          callback({ status: "FAILURE", error: error.message });
         })
         .apiGetTaskStatus(taskId);
     }, 1500);
@@ -1405,14 +1519,14 @@
   }
 
   function updateProgress(taskType, progress, statusText) {
-    const progressBar = document.getElementById(taskType + '-progress-bar');
-    const statusEl = document.getElementById(taskType + '-status-text');
+    const progressBar = document.getElementById(taskType + "-progress-bar");
+    const statusEl = document.getElementById(taskType + "-status-text");
 
     if (progressBar) {
-      progressBar.style.width = progress + '%';
+      progressBar.style.width = progress + "%";
     }
     if (statusEl) {
-      statusEl.textContent = statusText || '처리 중...';
+      statusEl.textContent = statusText || "처리 중...";
     }
   }
 
@@ -1422,35 +1536,36 @@
   const elapsedTimers = {};
 
   function showToast(message, type) {
-    const container = document.getElementById('toast-container');
+    const container = document.getElementById("toast-container");
 
-    const toast = document.createElement('div');
-    toast.className = 'toast-enter px-4 py-3 rounded-lg shadow-lg text-white text-sm max-w-xs';
+    const toast = document.createElement("div");
+    toast.className =
+      "toast-enter px-4 py-3 rounded-lg shadow-lg text-white text-sm max-w-xs";
 
     switch (type) {
-      case 'success':
-        toast.classList.add('bg-green-600');
-        toast.innerHTML = '✅ ' + message;
+      case "success":
+        toast.classList.add("bg-green-600");
+        toast.innerHTML = "✅ " + message;
         break;
-      case 'error':
-        toast.classList.add('bg-red-600');
-        toast.innerHTML = '❌ ' + message;
+      case "error":
+        toast.classList.add("bg-red-600");
+        toast.innerHTML = "❌ " + message;
         break;
-      case 'warning':
-        toast.classList.add('bg-yellow-500');
-        toast.innerHTML = '⚠️ ' + message;
+      case "warning":
+        toast.classList.add("bg-yellow-500");
+        toast.innerHTML = "⚠️ " + message;
         break;
       default:
-        toast.classList.add('bg-gray-800');
-        toast.innerHTML = 'ℹ️ ' + message;
+        toast.classList.add("bg-gray-800");
+        toast.innerHTML = "ℹ️ " + message;
     }
 
     container.appendChild(toast);
 
     // 3초 후 제거
     setTimeout(function () {
-      toast.classList.remove('toast-enter');
-      toast.classList.add('toast-exit');
+      toast.classList.remove("toast-enter");
+      toast.classList.add("toast-exit");
       setTimeout(function () {
         toast.remove();
       }, 300);
@@ -1458,14 +1573,14 @@
   }
 
   function showLoading(show, text) {
-    const overlay = document.getElementById('loading-overlay');
-    const textEl = document.getElementById('loading-text');
+    const overlay = document.getElementById("loading-overlay");
+    const textEl = document.getElementById("loading-text");
 
     if (show) {
-      textEl.textContent = text || '처리 중...';
-      overlay.classList.remove('hidden');
+      textEl.textContent = text || "처리 중...";
+      overlay.classList.remove("hidden");
     } else {
-      overlay.classList.add('hidden');
+      overlay.classList.add("hidden");
     }
   }
 
@@ -1483,8 +1598,8 @@
   }
 
   function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
+    if (!text) return "";
+    const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
   }
@@ -1495,37 +1610,37 @@
 
   // 진행 단계 업데이트
   function updateProgressStep(taskType, stepName, status) {
-    const stepsContainer = document.getElementById(taskType + '-steps');
+    const stepsContainer = document.getElementById(taskType + "-steps");
     if (!stepsContainer) return;
 
     const step = stepsContainer.querySelector(`[data-step="${stepName}"]`);
     if (!step) return;
 
-    const icon = step.querySelector('.step-icon');
+    const icon = step.querySelector(".step-icon");
 
     // 이전 상태 제거
-    step.classList.remove('active', 'completed');
+    step.classList.remove("active", "completed");
 
-    if (status === 'active') {
-      step.classList.add('active');
-      icon.textContent = '⏳';
-    } else if (status === 'completed') {
-      step.classList.add('completed');
-      icon.textContent = '✅';
+    if (status === "active") {
+      step.classList.add("active");
+      icon.textContent = "⏳";
+    } else if (status === "completed") {
+      step.classList.add("completed");
+      icon.textContent = "✅";
     } else {
-      icon.textContent = '⬜';
+      icon.textContent = "⬜";
     }
   }
 
   // 모든 진행 단계 초기화
   function resetProgressSteps(taskType) {
-    const stepsContainer = document.getElementById(taskType + '-steps');
+    const stepsContainer = document.getElementById(taskType + "-steps");
     if (!stepsContainer) return;
 
-    stepsContainer.querySelectorAll('.step').forEach(function (step) {
-      step.classList.remove('active', 'completed');
-      const icon = step.querySelector('.step-icon');
-      if (icon) icon.textContent = '⬜';
+    stepsContainer.querySelectorAll(".step").forEach(function (step) {
+      step.classList.remove("active", "completed");
+      const icon = step.querySelector(".step-icon");
+      if (icon) icon.textContent = "⬜";
     });
   }
 
@@ -1533,7 +1648,7 @@
   function startElapsedTimer(taskType) {
     stopElapsedTimer(taskType);
 
-    const timerEl = document.getElementById(taskType + '-elapsed-time');
+    const timerEl = document.getElementById(taskType + "-elapsed-time");
     if (!timerEl) return;
 
     const startTime = Date.now();
@@ -1556,15 +1671,18 @@
   function formatElapsedTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
   // 클립보드 복사
   function copyToClipboard(text, successMessage) {
-    navigator.clipboard.writeText(text).then(function () {
-      showToast(successMessage || '복사되었습니다.', 'success');
-    }).catch(function (err) {
-      showToast('복사 실패: ' + err, 'error');
-    });
+    navigator.clipboard
+      .writeText(text)
+      .then(function () {
+        showToast(successMessage || "복사되었습니다.", "success");
+      })
+      .catch(function (err) {
+        showToast("복사 실패: " + err, "error");
+      });
   }
 </script>
