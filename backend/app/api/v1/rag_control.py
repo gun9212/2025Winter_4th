@@ -238,7 +238,6 @@ async def search_documents(
             answer = gemini_service.generate_answer(
                 query=request.query,
                 context=context_chunks,
-                partner_info=partner_info,
             )
 
         logger.info(
