@@ -181,7 +181,8 @@ class GeminiService:
 ## 답변:"""
 
         # RAG 답변은 사실 기반이어야 하므로 temperature를 낮게 설정
-        return self.generate_text(prompt, temperature=0.1)
+        # max_tokens를 8192로 늘려 긴 답변도 잘리지 않게 함
+        return self.generate_text(prompt, temperature=0.1, max_tokens=8192)
 
     def extract_calendar_events(self, text: str) -> list[dict[str, Any]]:
         """
