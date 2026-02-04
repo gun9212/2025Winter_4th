@@ -227,9 +227,9 @@ async def chat(
         # === Step 4: Answer Generation ===
         generation_start = time.time()
 
-        # Prepare context documents (prefer parent_content for richer context)
+        # Prepare context documents with document names for better attribution
         context_docs = [
-            result.get("parent_content") or result.get("content", "")
+            f"[문서: {result.get('document_name', '알 수 없음')}]\n{result.get('parent_content') or result.get('content', '')}"
             for result in search_results
         ]
 
