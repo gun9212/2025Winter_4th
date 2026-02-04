@@ -10,7 +10,7 @@ from typing import Any
 
 from celery import shared_task
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -102,8 +102,16 @@ def run_full_pipeline(
         async with get_celery_session() as db:
             try:
                 # Check if document already exists
+                # Normalize drive_id by removing 'local:' prefix for comparison
+                normalized_id = drive_id.removeprefix("local:")
                 existing_doc = await db.execute(
-                    select(Document).where(Document.drive_id == drive_id)
+                    select(Document).where(
+                        or_(
+                            Document.drive_id == drive_id,
+                            Document.drive_id == normalized_id,
+                            Document.drive_id == f"local:{normalized_id}",
+                        )
+                    )
                 )
                 existing = existing_doc.scalar_one_or_none()
 
