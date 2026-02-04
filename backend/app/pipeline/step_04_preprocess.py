@@ -24,15 +24,18 @@ PREPROCESSING_PROMPT = """당신은 서울대학교 컴퓨터공학부 학생회
 
 아래 회의 문서를 분석하여 Markdown 헤더 구조를 추가해주세요.
 
-## ⚠️ 절대 규칙 (MUST FOLLOW):
-1. **원본 텍스트를 한 글자도 수정하지 마세요**
-   - 내용 요약, 생략, 재작성, 교정 절대 금지
-   - 오직 헤더(`#`, `##`)만 삽입
-   - 원본의 모든 문장, 표, 리스트를 그대로 유지
+## 🚨 최우선 규칙 (반드시 준수):
+1. **원본 텍스트를 100% 유지하세요**
+   - 모든 문장, 모든 단어, 모든 표, 모든 리스트를 그대로 출력
+   - 어떤 내용도 생략, 요약, 축약 절대 금지
+   - 입력 문서 길이와 출력 문서 길이가 거의 동일해야 함
+   
+2. **헤더만 삽입**
+   - 오직 `#`와 `##` 헤더만 적절한 위치에 추가
+   - 원본의 줄바꿈, 공백도 유지
 
-2. **기존 `#`, `##` 헤더는 무시하세요**
-   - 파서가 임의로 생성한 헤더이므로 안건 기준이 아닙니다
-   - 기존 헤더를 제거하고, 아래 규칙에 따라 새로 구조화하세요
+3. **기존 `#`, `##` 헤더는 무시**
+   - 파서가 임의로 생성한 헤더이므로 제거하고 새로 구조화
 
 ## 📋 헤더 구조 규칙:
 1. **안건 종류**는 `#` (H1) 헤더로 표시
@@ -45,18 +48,18 @@ PREPROCESSING_PROMPT = """당신은 서울대학교 컴퓨터공학부 학생회
 ## 🔍 안건 파악 방법:
 - **문서 상단에 안건 요약표가 있습니다** (항상 존재)
 - 형식: `| 안건 | <보고안건> 1. 제목 2. 제목 <논의안건> 1. 제목 ... |`
-- 이 요약표를 참고하여 본문의 각 안건 시작 위치에 헤더를 삽입하세요
+- 이 요약표를 참고하여 본문의 각 안건 시작 위치에 헤더를 삽입
 
-## 출력 형식:
-- Markdown 형식으로 출력
-- 헤더 구조 규칙에 따라 수정한 헤더와 본문만 출력 (설명, 주석 없이)
-- 원본 내용 100% 유지, 헤더 구조만 추가
+## 출력:
+- Markdown 형식
+- 원본 내용 100% 포함 + 헤더 구조만 추가
+- 설명이나 주석 없이 결과물만 출력
 
 ## 입력 문서:
 {content}
 
 ---
-위 문서를 안건 기준으로 헤더 구조화하여 출력하세요."""
+위 문서를 안건 기준으로 헤더 구조화하여 **전체 내용을 유지하며** 출력하세요."""
 
 
 # Prompt for non-meeting documents (simpler structure)
@@ -104,7 +107,14 @@ class PreprocessingService:
 
     def __init__(self):
         """Initialize preprocessing service."""
-        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
+        # Increase max_output_tokens to prevent content truncation
+        self.model = genai.GenerativeModel(
+            settings.GEMINI_MODEL,
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=32000,  # Max for Gemini 2.0 Flash
+                temperature=0.1,  # Low temperature for more faithful output
+            ),
+        )
 
     async def preprocess_document(
         self,
@@ -142,6 +152,26 @@ class PreprocessingService:
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 processed_content = "\n".join(lines)
+
+            # Log content length comparison to detect loss
+            original_len = len(content)
+            processed_len = len(processed_content)
+            loss_ratio = 1 - (processed_len / original_len) if original_len > 0 else 0
+            
+            logger.info(
+                "Preprocessing complete",
+                original_length=original_len,
+                processed_length=processed_len,
+                loss_ratio=f"{loss_ratio:.1%}",
+            )
+            
+            # If severe content loss (>50%), fall back to original with basic cleanup
+            if loss_ratio > 0.5:
+                logger.warning(
+                    "Severe content loss detected, using original content",
+                    loss_ratio=f"{loss_ratio:.1%}",
+                )
+                processed_content = self._basic_cleanup(content)
 
             # Extract headers for metadata
             headers = self._extract_headers(processed_content)
