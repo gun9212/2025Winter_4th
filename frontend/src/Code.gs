@@ -147,6 +147,26 @@ function getCurrentDocumentText() {
   return doc ? doc.getBody().getText() : '';
 }
 
+/**
+ * 사용자 권한 레벨 가져오기
+ * 회장단(level 1)인 경우 인수인계서 생성 권한 부여
+ * @returns {Object} { level: number, canCreateHandover: boolean }
+ */
+function getUserLevel() {
+  const email = Session.getActiveUser().getEmail();
+  const props = PropertiesService.getScriptProperties();
+  
+  // 관리자 이메일 목록 (회장단)
+  const adminEmails = (props.getProperty('ADMIN_EMAILS') || '').split(',').map(e => e.trim().toLowerCase());
+  
+  if (adminEmails.includes(email.toLowerCase())) {
+    return { level: 1, canCreateHandover: true };
+  }
+  
+  // 기본값: 일반 사용자 (level 4)
+  return { level: 4, canCreateHandover: false };
+}
+
 // ============================================
 // Google Picker 관련
 // ============================================
@@ -276,6 +296,7 @@ function getAdminSettings() {
 
 /**
  * 문서에서 Placeholder 추출
+ * 단일 중괄호 형식 {placeholder} 지원
  * @param {string} docId - Google Docs ID
  * @returns {Object} Placeholder 목록
  */
@@ -284,8 +305,9 @@ function extractPlaceholders(docId) {
     const doc = DocumentApp.openById(docId);
     const text = doc.getBody().getText();
     
-    // {{...}} 패턴 찾기
-    const regex = /\{\{([^}]+)\}\}/g;
+    // {report_1_result} 형식의 단일 중괄호 패턴 찾기
+    // 단, {{ 또는 }} 처럼 이중 중괄호는 제외
+    const regex = /(?<!\{)\{([^{}]+)\}(?!\})/g;
     const placeholders = [];
     let match;
     

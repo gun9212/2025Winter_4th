@@ -517,6 +517,39 @@
 
     // 오늘 날짜 기본값
     document.getElementById('meeting-date').valueAsDate = new Date();
+    
+    // 인수인계서 관련 이벤트 리스너 (Docs 탭으로 이동됨)
+    document.getElementById('generate-handover-btn')?.addEventListener('click', generateHandover);
+    document.getElementById('handover-copy-link-btn')?.addEventListener('click', function () {
+      const link = document.getElementById('handover-result-link').href;
+      copyToClipboard(link, '인수인계서 링크가 복사되었습니다.');
+    });
+    
+    // 권한에 따라 인수인계서 섹션 표시/숨김
+    checkHandoverAccess();
+  }
+  
+  /**
+   * 인수인계서 생성 권한 확인 및 섹션 표시
+   */
+  function checkHandoverAccess() {
+    google.script.run
+      .withSuccessHandler(function (result) {
+        const handoverSection = document.getElementById('handover-section');
+        if (handoverSection) {
+          if (result && result.canCreateHandover) {
+            handoverSection.classList.remove('hidden');
+          } else {
+            handoverSection.classList.add('hidden');
+          }
+        }
+      })
+      .withFailureHandler(function (error) {
+        console.error('권한 확인 실패:', error);
+        // 실패 시 숨김 유지
+      })
+      .getUserLevel();
+  }
   }
 
   function inspectTemplate() {
@@ -535,9 +568,9 @@
         if (result.success) {
           const placeholders = result.uniqueNames;
           if (placeholders.length > 0) {
-            alert('📋 발견된 Placeholder (' + placeholders.length + '개):\n\n' + placeholders.map(p => '• {{' + p + '}}').join('\n'));
+            alert('📋 발견된 Placeholder (' + placeholders.length + '개):\n\n' + placeholders.map(p => '• {' + p + '}').join('\n'));
           } else {
-            alert('⚠️ Placeholder가 발견되지 않았습니다.\n\n템플릿에 {{report_1_result}} 형식의 placeholder를 추가해주세요.');
+            alert('⚠️ Placeholder가 발견되지 않았습니다.\n\n템플릿에 {report_1_result} 형식의 placeholder를 추가해주세요.');
           }
         } else {
           showToast('템플릿 검사 실패: ' + result.error, 'error');
@@ -1012,15 +1045,10 @@
 
   function initAdminTab() {
     document.getElementById('start-ingest-btn').addEventListener('click', startIngestion);
-    document.getElementById('generate-handover-btn').addEventListener('click', generateHandover);
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
     document.getElementById('refresh-docs-btn').addEventListener('click', loadDocuments);
-
-    // 인수인계서 링크 복사 버튼
-    document.getElementById('handover-copy-link-btn')?.addEventListener('click', function () {
-      const link = document.getElementById('handover-result-link').href;
-      copyToClipboard(link, '인수인계서 링크가 복사되었습니다.');
-    });
+    
+    // Note: Handover 관련 이벤트 리스너는 initDocsTab()에서 처리 (Docs 탭으로 이동됨)
   }
 
   function startIngestion() {

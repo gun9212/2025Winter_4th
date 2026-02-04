@@ -301,9 +301,12 @@ def build_placeholder_map(
     Build placeholder replacement map for Smart Minutes.
     
     Maps agenda items to their summaries using naming convention:
-    - {{report_1_result}} for 보고안건 1
-    - {{discuss_1_result}} for 논의안건 1
-    - {{other_1_result}} for 기타안건 1
+    - {report_1_result} for 보고안건 1
+    - {discuss_1_result} for 논의안건 1
+    - {decision_1_result} for 의결안건 1
+    - {other_1_result} for 기타안건 1
+    
+    Note: Uses single curly braces to match Google Docs template format.
     
     Args:
         sections: List of DocumentSections from split transcript
@@ -316,7 +319,7 @@ def build_placeholder_map(
         >>> sections = [DocumentSection(title="논의안건 1. 컴씨 장소", ...)]
         >>> summaries = ["오크밸리로 결정"]
         >>> build_placeholder_map(sections, summaries)
-        {'{{discuss_1_result}}': '오크밨밸리로 결정'}
+        {'{discuss_1_result}': '오크밸리로 결정'}
     """
     replacements = {}
     
@@ -333,12 +336,25 @@ def build_placeholder_map(
                 type_counts[agenda_type] += 1
                 num = type_counts[agenda_type]
             
-            placeholder = f"{{{{{agenda_type}_{num}_result}}}}"
+            # Single curly braces to match Google Docs template format
+            placeholder = f"{{{agenda_type}_{num}_result}}"
             replacements[placeholder] = summary
+            
+            logger.debug(
+                "Created placeholder mapping",
+                placeholder=placeholder,
+                summary_preview=summary[:50] if summary else "",
+            )
         else:
             # Generic placeholder for untyped sections
-            placeholder = f"{{{{section_{len(replacements)+1}_result}}}}"
+            placeholder = f"{{section_{len(replacements)+1}_result}}"
             replacements[placeholder] = summary
+    
+    logger.info(
+        "Built placeholder map",
+        total_replacements=len(replacements),
+        placeholders=list(replacements.keys()),
+    )
     
     return replacements
 
