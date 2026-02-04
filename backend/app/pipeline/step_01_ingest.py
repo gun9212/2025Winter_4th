@@ -53,13 +53,22 @@ EXTENSION_TO_DOCTYPE: dict[str, DocumentType] = {
     ".jpg": DocumentType.OTHER,
     ".jpeg": DocumentType.OTHER,
     ".png": DocumentType.OTHER,
+    # Google native formats (when not exported to Office format)
+    ".gdoc": DocumentType.GOOGLE_DOC,
+    ".gsheet": DocumentType.GOOGLE_SHEET,
+    ".gslides": DocumentType.OTHER,
+    "": DocumentType.GOOGLE_DOC,  # Extensionless files treated as Google Docs
 }
 
 # Whitelist: Only these file extensions are allowed for ingestion
+# Added ".gdoc", ".gsheet" for Google Docs native format (when not exported)
+# Added "" for extensionless files (Google Docs sometimes download without extension)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".docx", ".xlsx", ".pptx", ".pdf",
     ".hwp", ".hwpx", ".txt", ".csv",
     ".jpg", ".jpeg", ".png",
+    ".gdoc", ".gsheet", ".gslides",  # Google native formats
+    "",  # Allow extensionless files (will be treated as Google Docs)
 }
 
 # rclone configuration (from teammate)
