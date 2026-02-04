@@ -437,6 +437,7 @@ class EmbeddingService:
                 "access_level": row.access_level,
                 "document_id": row.document_id,
                 "document_name": row.standardized_name or row.drive_name,
+                "drive_name": row.drive_name,  # Original filename for better attribution
                 "drive_id": row.drive_id,
                 "semantic_score": float(row.semantic_score),
                 "time_score": float(row.time_score),

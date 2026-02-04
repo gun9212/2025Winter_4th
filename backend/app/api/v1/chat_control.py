@@ -230,10 +230,19 @@ async def chat(
         generation_start = time.time()
 
         # Prepare context documents with document names for better attribution
-        context_docs = [
-            f"[문서: {result.get('document_name', '알 수 없음')}]\n{result.get('parent_content') or result.get('content', '')}"
-            for result in search_results
-        ]
+        context_docs = []
+        for result in search_results:
+            doc_name = result.get('document_name', '알 수 없음')
+            drive_name = result.get('drive_name', '')
+            content = result.get('parent_content') or result.get('content', '')
+            
+            # Include both names if different (e.g., 별첨 files)
+            if drive_name and drive_name != doc_name:
+                header = f"[문서: {doc_name}] [파일: {drive_name}]"
+            else:
+                header = f"[문서: {doc_name}]"
+            
+            context_docs.append(f"{header}\n{content}")
 
         # Generate answer
         answer = gemini_service.generate_answer(
