@@ -357,7 +357,7 @@ class EmbeddingService:
             keyword_conditions = []
             for i, kw in enumerate(keywords[:5]):  # Max 5 keywords
                 keyword_conditions.append(
-                    f"CASE WHEN d.standardized_name ILIKE :kw{i} OR c.content ILIKE :kw{i} THEN 0.2 ELSE 0 END"
+                    f"CASE WHEN d.standardized_name ILIKE :kw{i} OR d.drive_name ILIKE :kw{i} OR c.content ILIKE :kw{i} THEN 0.2 ELSE 0 END"
                 )
             keyword_clause = " + ".join(keyword_conditions) if keyword_conditions else "0"
         
