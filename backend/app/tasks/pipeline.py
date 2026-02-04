@@ -553,7 +553,7 @@ def reprocess_document(
                     # Step 7: Embedding
                     logger.info("Step 7: Embedding", document_id=document_id)
                     embedder = EmbeddingService(db)
-                    await embedder.embed_chunks(document.id)
+                    embed_result = await embedder.embed_chunks(db_chunks)
                 
                 document.status = DocumentStatus.COMPLETED
                 await db.commit()
