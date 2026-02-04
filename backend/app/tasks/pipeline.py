@@ -184,11 +184,13 @@ def run_full_pipeline(
                 await db.flush()
                 
                 # Step 4: Preprocessing
+                # BUGFIX: Use markdown_content (with image captions) instead of html_content
+                # markdown_content contains Gemini-generated captions injected in Step 3
                 preprocessor = PreprocessingService()
                 is_meeting = classification.doc_category == DocumentCategory.MEETING_DOCUMENT
                 
                 preprocess_result = await preprocessor.preprocess_document(
-                    content=parse_result.html_content,
+                    content=parse_result.markdown_content,
                     is_meeting_document=is_meeting,
                 )
                 
