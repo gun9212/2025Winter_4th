@@ -150,7 +150,7 @@ class ClassificationResult:
 class ClassificationService:
     """
     Service for classifying documents based on filename and folder path.
-    
+
     Uses a two-stage approach:
     1. Regex-based quick classification for obvious patterns
     2. LLM-based classification for complex cases and standardization
@@ -159,6 +159,35 @@ class ClassificationService:
     def __init__(self):
         """Initialize classification service with Gemini 2.0 Flash."""
         self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
+
+    def _extract_year_from_path(self, filename: str, folder_path: str) -> int | None:
+        """
+        Extract year from filename or folder path using regex.
+
+        Handles patterns like:
+        - 2025_회의록, 2024년, 2025.05.01
+        - /문서/2024/회의록/
+
+        Args:
+            filename: Document filename
+            folder_path: Full folder path
+
+        Returns:
+            Year as integer if found, None otherwise
+        """
+        combined = f"{folder_path}/{filename}"
+
+        # Pattern 1: 4-digit year (2020-2029)
+        match = re.search(r'20[2][0-9]', combined)
+        if match:
+            return int(match.group())
+
+        # Pattern 2: 2-digit year with context (예: '25년, 24학년도)
+        match = re.search(r'[\'"]?(2[4-9])(?:년|학년)', combined)
+        if match:
+            return 2000 + int(match.group(1))
+
+        return None
 
     def _get_file_extension_type(self, extension: str) -> tuple[DocumentType, FileExtensionType]:
         """Get document type and extension category from file extension."""
@@ -237,12 +266,17 @@ class ClassificationService:
         standardized_name = None
         department = None
         event_name = None
-        year = None
         confidence = 0.7  # Base confidence for regex classification
         llm_response = None
 
-        # Stage 3: LLM enhancement
-        if use_llm and doc_category == DocumentCategory.MEETING_DOCUMENT:
+        # Stage 3: Regex-based year extraction (fast, free)
+        year = self._extract_year_from_path(filename, folder_path)
+        if year:
+            logger.debug("Year extracted via regex", year=year, filename=filename)
+
+        # Stage 4: LLM enhancement (for meeting docs OR when year not found)
+        needs_llm = doc_category == DocumentCategory.MEETING_DOCUMENT or year is None
+        if use_llm and needs_llm:
             try:
                 llm_result = await self._llm_classify_and_standardize(
                     filename, folder_path, extension
@@ -251,7 +285,9 @@ class ClassificationService:
                     standardized_name = llm_result.get("standardized_name")
                     department = llm_result.get("department")
                     event_name = llm_result.get("event_name")
-                    year = llm_result.get("year")
+                    # Only use LLM year if regex didn't find one
+                    if year is None:
+                        year = llm_result.get("year")
                     confidence = llm_result.get("confidence", 0.85)
                     llm_response = llm_result
                     
