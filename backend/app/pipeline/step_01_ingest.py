@@ -439,9 +439,9 @@ class IngestionService:
             files_to_process=len(files),
         )
 
-        # Get existing paths from DB
-        existing_result = await db.execute(select(Document.drive_path))
-        existing_paths = set(row[0] for row in existing_result.fetchall() if row[0])
+        # Get existing drive_ids from DB (unique constraint is on drive_id)
+        existing_result = await db.execute(select(Document.drive_id))
+        existing_ids = set(row[0] for row in existing_result.fetchall() if row[0])
 
         new_count = 0
         skipped_count = 0
@@ -449,13 +449,17 @@ class IngestionService:
         for file_info in files:
             file_path = file_info["path"]
 
-            # Check for duplicates
-            if file_path in existing_paths:
-                skipped_count += 1
-                continue
-
             # Generate unique drive_id based on path
             drive_id = f"local:{file_path}"
+
+            # Check for duplicates using drive_id (matches DB unique constraint)
+            if drive_id in existing_ids:
+                skipped_count += 1
+                logger.debug(
+                    "[REGISTER] Skipping duplicate",
+                    drive_id=drive_id,
+                )
+                continue
 
             doc = Document(
                 drive_id=drive_id,
