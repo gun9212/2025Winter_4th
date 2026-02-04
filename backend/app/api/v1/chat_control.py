@@ -210,8 +210,8 @@ async def chat(
             limit=request.options.max_results,
             access_level=request.user_level,
             semantic_weight=request.options.semantic_weight,
-            time_weight=(1.0 - request.options.semantic_weight) * 0.5,
-            keyword_weight=(1.0 - request.options.semantic_weight) * 0.5,
+            time_weight=(1.0 - request.options.semantic_weight) * 0.3,
+            keyword_weight=(1.0 - request.options.semantic_weight) * 0.7,  # Higher keyword importance
             year_filter=request.options.year_filter,
             department_filter=request.options.department_filter,
             query_text=rewritten_query,  # For keyword matching
