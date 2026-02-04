@@ -22,8 +22,8 @@ from app.models.document import Document, DocumentStatus
 
 logger = structlog.get_logger()
 
-import nest_asyncio
-nest_asyncio.apply()
+# Flag to track if nest_asyncio has been applied (for Celery worker only)
+_nest_asyncio_applied = False
 
 
 def run_async(coro):
@@ -32,6 +32,18 @@ def run_async(coro):
     Uses nest_asyncio to allow nested event loops, preventing
     'Event loop is closed' errors with Gemini SDK.
     """
+    global _nest_asyncio_applied
+    
+    # Apply nest_asyncio only once, only in Celery context
+    if not _nest_asyncio_applied:
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+            _nest_asyncio_applied = True
+        except ValueError:
+            # uvloop doesn't support nesting - skip (FastAPI context)
+            pass
+    
     try:
         loop = asyncio.get_event_loop()
         if loop.is_closed():
@@ -42,6 +54,7 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     
     return loop.run_until_complete(coro)
+
 
 
 @asynccontextmanager
