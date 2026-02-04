@@ -53,8 +53,10 @@ class AgendaSummary(BaseModel):
 class MinutesGenerationRequest(BaseModel):
     """Request for Smart Minutes generation (결과지 자동 생성).
     
-    Supports both Doc ID input (server fetches content) and
-    direct text input (for flexibility).
+    Supports:
+    1. DB Document ID (source_document_id) - PREFERRED: Uses preprocessed_content from RAG pipeline
+    2. Google Doc ID (transcript_doc_id) - DEPRECATED: Server fetches via Docs API
+    3. Direct text (transcript_text) - Fallback for flexibility
     """
     
     agenda_doc_id: str = Field(
@@ -62,13 +64,17 @@ class MinutesGenerationRequest(BaseModel):
         description="Google Docs ID of the agenda template (안건지)",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
+    source_document_id: int | None = Field(
+        default=None,
+        description="DB Document ID (속기록). PREFERRED: Uses preprocessed_content from RAG pipeline.",
+    )
     transcript_doc_id: str | None = Field(
         default=None,
-        description="Google Docs ID of the transcript (속기록). If provided, server fetches content.",
+        description="[DEPRECATED] Google Docs ID of the transcript. Use source_document_id instead.",
     )
     transcript_text: str | None = Field(
         default=None,
-        description="Direct transcript text. Use if transcript_doc_id is not provided.",
+        description="Direct transcript text. Fallback if neither source_document_id nor transcript_doc_id provided.",
         min_length=10,
     )
     template_doc_id: str | None = Field(
@@ -108,9 +114,10 @@ class MinutesGenerationRequest(BaseModel):
     @classmethod
     def validate_transcript_source(cls, v, info):
         """Ensure at least one transcript source is provided."""
+        source_doc_id = info.data.get("source_document_id")
         transcript_doc_id = info.data.get("transcript_doc_id")
-        if not v and not transcript_doc_id:
-            raise ValueError("Either transcript_doc_id or transcript_text must be provided")
+        if not v and not transcript_doc_id and not source_doc_id:
+            raise ValueError("Either source_document_id, transcript_doc_id, or transcript_text must be provided")
         return v
 
 
