@@ -345,10 +345,17 @@ class EmbeddingService:
         Returns:
             List of matching chunks with combined scores
         """
-        # Extract keywords from query (simple split, filter short words)
+        # Korean stop words (common words that don't help search)
+        stop_words = {
+            '관련', '문서를', '문서', '찾아줘', '알려줘', '보여줘', '검색',
+            '대해', '대한', '무엇', '어떤', '어떻게', '있는', '하는', '되는',
+            '것이', '것을', '해줘', '주세요', '부탁', '요청', '정보',
+        }
+        
+        # Extract keywords from query (simple split, filter short words and stop words)
         keywords = []
         if query_text:
-            keywords = [w for w in query_text.split() if len(w) >= 2]
+            keywords = [w for w in query_text.split() if len(w) >= 2 and w not in stop_words]
         
         # Build keyword matching clause
         keyword_clause = "0"  # Default no bonus
