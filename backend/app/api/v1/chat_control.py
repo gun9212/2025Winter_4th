@@ -204,15 +204,17 @@ async def chat(
         semantic_weight = request.options.semantic_weight
         time_weight = 1.0 - semantic_weight
 
-        # Perform hybrid search with time decay
+        # Perform hybrid search with time decay and keyword matching
         search_results = await embedding_service.search_with_time_decay(
             query_embedding=query_embedding,
             limit=request.options.max_results,
             access_level=request.user_level,
-            semantic_weight=semantic_weight,
-            time_weight=time_weight,
+            semantic_weight=request.options.semantic_weight,
+            time_weight=(1.0 - request.options.semantic_weight) * 0.5,
+            keyword_weight=(1.0 - request.options.semantic_weight) * 0.5,
             year_filter=request.options.year_filter,
             department_filter=request.options.department_filter,
+            query_text=rewritten_query,  # For keyword matching
         )
 
         retrieval_latency_ms = int((time.time() - retrieval_start) * 1000)

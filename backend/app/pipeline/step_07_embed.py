@@ -319,29 +319,49 @@ class EmbeddingService:
         query_embedding: list[float],
         limit: int = 10,
         access_level: int = 4,
-        semantic_weight: float = 0.7,
-        time_weight: float = 0.3,
+        semantic_weight: float = 0.6,
+        time_weight: float = 0.2,
+        keyword_weight: float = 0.2,
         year_filter: list[int] | None = None,
         department_filter: str | None = None,
+        query_text: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Search with combined semantic and time decay scoring.
+        Hybrid search with semantic, time decay, and keyword scoring.
 
-        Final Score = semantic_weight * similarity + time_weight * recency
+        Final Score = semantic_weight * similarity + time_weight * recency + keyword_weight * keyword_match
 
         Args:
             query_embedding: Query vector
             limit: Maximum results
             access_level: Access level filter
-            semantic_weight: Weight for semantic similarity (default 0.7)
-            time_weight: Weight for recency (default 0.3)
-            year_filter: Optional list of years to filter (e.g., [2024, 2025])
-            department_filter: Optional department to filter (e.g., '문화국', '복지국')
+            semantic_weight: Weight for semantic similarity (default 0.6)
+            time_weight: Weight for recency (default 0.2)
+            keyword_weight: Weight for keyword matching (default 0.2)
+            year_filter: Optional list of years to filter
+            department_filter: Optional department to filter
+            query_text: Original query text for keyword matching
 
         Returns:
             List of matching chunks with combined scores
         """
-        base_query = """
+        # Extract keywords from query (simple split, filter short words)
+        keywords = []
+        if query_text:
+            keywords = [w for w in query_text.split() if len(w) >= 2]
+        
+        # Build keyword matching clause
+        keyword_clause = "0"  # Default no bonus
+        if keywords:
+            # Create CASE WHEN for each keyword
+            keyword_conditions = []
+            for i, kw in enumerate(keywords[:5]):  # Max 5 keywords
+                keyword_conditions.append(
+                    f"CASE WHEN d.standardized_name ILIKE :kw{i} OR d.drive_name ILIKE :kw{i} OR c.content ILIKE :kw{i} THEN 0.2 ELSE 0 END"
+                )
+            keyword_clause = " + ".join(keyword_conditions) if keyword_conditions else "0"
+        
+        base_query = f"""
             SELECT
                 c.id,
                 c.content,
@@ -354,10 +374,12 @@ class EmbeddingService:
                 d.standardized_name,
                 d.time_decay_date,
                 1 - (c.embedding <=> :query_embedding) as semantic_score,
-                EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date)) as time_score,
+                COALESCE(EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date)), 0.5) as time_score,
+                ({keyword_clause}) as keyword_score,
                 (
                     :semantic_weight * (1 - (c.embedding <=> :query_embedding)) +
-                    :time_weight * EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date))
+                    :time_weight * COALESCE(EXP(-0.001 * EXTRACT(DAY FROM NOW() - d.time_decay_date)), 0.5) +
+                    :keyword_weight * ({keyword_clause})
                 ) as final_score
             FROM document_chunks c
             JOIN documents d ON c.document_id = d.id
@@ -365,7 +387,6 @@ class EmbeddingService:
                 AND c.is_parent = FALSE
                 AND c.access_level IS NOT NULL
                 AND c.access_level <= :access_level
-                AND d.time_decay_date IS NOT NULL
         """
 
         params = {
@@ -373,8 +394,13 @@ class EmbeddingService:
             "access_level": access_level,
             "semantic_weight": semantic_weight,
             "time_weight": time_weight,
+            "keyword_weight": keyword_weight,
             "limit": limit,
         }
+        
+        # Add keyword parameters
+        for i, kw in enumerate(keywords[:5]):
+            params[f"kw{i}"] = f"%{kw}%"
 
         if year_filter:
             base_query += " AND d.year = ANY(:year_filter)"
@@ -407,6 +433,7 @@ class EmbeddingService:
                 "drive_id": row.drive_id,
                 "semantic_score": float(row.semantic_score),
                 "time_score": float(row.time_score),
+                "keyword_score": float(row.keyword_score) if row.keyword_score else 0,
                 "final_score": float(row.final_score),
             }
             for row in rows
