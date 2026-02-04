@@ -541,9 +541,14 @@ def reprocess_document(
                             "department": document.department,
                             "year": document.year,
                         },
+                    )
+                    # Enrich chunks separately
+                    db_chunks = await enricher.enrich_chunks(
+                        document=document,
                         chunks=chunks,
                     )
                     await db.flush()
+                    logger.info("Enrichment complete", document_id=document_id, chunks_enriched=len(db_chunks))
                 
                     # Step 7: Embedding
                     logger.info("Step 7: Embedding", document_id=document_id)
