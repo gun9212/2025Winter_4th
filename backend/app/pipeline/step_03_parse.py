@@ -226,18 +226,49 @@ class ParsingService:
         Returns:
             API response dictionary
         """
+        masked_key = f"{self.upstage_api_key[:4]}****" if self.upstage_api_key else "None"
+        file_size_kb = len(file_content) / 1024
+        
+        logger.info(
+            "🔴 [TRUTH LOG] calling Upstage API",
+            filename=filename,
+            file_size_kb=f"{file_size_kb:.2f} KB",
+            api_key_prefix=masked_key,
+            url=self.UPSTAGE_API_URL
+        )
+
         async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                self.UPSTAGE_API_URL,
-                headers={"Authorization": f"Bearer {self.upstage_api_key}"},
-                files={"document": (filename, file_content)},
-                data={
-                    "output_format": output_format,
-                    "coordinates": "true",  # Request coordinates for cropping
-                },
-            )
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.post(
+                    self.UPSTAGE_API_URL,
+                    headers={"Authorization": f"Bearer {self.upstage_api_key}"},
+                    files={"document": (filename, file_content)},
+                    data={
+                        "output_format": output_format,
+                        "coordinates": "true",  # Request coordinates for cropping
+                    },
+                )
+                
+                logger.info(
+                    "🟢 [TRUTH LOG] Upstage API Response",
+                    status_code=response.status_code,
+                    elapsed=response.elapsed.total_seconds(),
+                    body_preview=response.text[:200] if response.text else "Empty Body"
+                )
+                
+                response.raise_for_status()
+                return response.json()
+                
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    "❌ [TRUTH LOG] Upstage API HTTP Error",
+                    status_code=e.response.status_code,
+                    body=e.response.text
+                )
+                raise
+            except Exception as e:
+                logger.error("❌ [TRUTH LOG] Upstage API Unexpected Error", error=str(e))
+                raise
 
     async def _enhance_with_captions(
         self,
