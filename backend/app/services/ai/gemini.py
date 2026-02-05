@@ -293,28 +293,31 @@ JSON만 출력하세요."""
         Returns:
             List of todo items with content, assignee, deadline, context
         """
-        prompt = f"""다음 회의 결과 문서에서 해야 할 일(Todo/Action Item)을 추출해주세요.
+        prompt = f"""다음 텍스트(회의 결과지 또는 속기록)에서 해야 할 일(Todo/Action Item)을 추출해주세요.
 
-## 회의 결과 문서
+## 분석 대상 텍스트
 {content[:8000]}  # Limit context length
 
 ## 추출 기준
-1. 명시적인 할 일: "~예정", "~진행", "~완료 필요"
-2. 담당자 지정: "담당:", "담당자:", 부서명 언급
-3. 마감일 언급: "~까지", "~일", "다음 주"
+1. **명시적인 할 일**: "~예정", "~진행", "~완료 필요" 등 문맥상 해야 할 일
+2. **대화 속 할 일**: "제가 하겠습니다", "이건 맡겨주세요" 등 발화에서 유추
+3. **담당자**: 언급된 이름, 직책, 부서 (확실치 않으면 null)
+4. **마감일**: 언급된 날짜 (없으면 null)
+
+*주의: 텍스트가 대화형(속기록)인 경우, 발화자의 의도와 맥락을 파악하여 실질적인 Action Item을 도출하세요.*
 
 ## 출력 형식 (JSON)
 [
     {{
-        "content": "할 일 내용",
-        "context": "어느 안건에서 나온 것인지 (예: 문화국 보고)",
-        "assignee": "담당자 또는 담당 부서 (없으면 null)",
-        "suggested_date": "문서에 언급된 날짜 텍스트 (없으면 null)",
-        "parsed_date": "YYYY-MM-DD 형식으로 파싱된 날짜 (파싱 불가 시 null)"
+        "content": "할 일 내용 (구체적으로)",
+        "context": "문맥 정보 (발언자, 관련 안건 등)",
+        "assignee": "담당자 (이름/직책) 또는 담당 부서 (없으면 null)",
+        "suggested_date": "언급된 날짜 텍스트 (없으면 null)",
+        "parsed_date": "YYYY-MM-DD 형식 (파싱 불가 시 null)"
     }}
 ]
 
-JSON 배열만 출력하세요."""
+JSON 배열만 출력하세요. 배열 외에 아무런 설명도 포함하지 마세요."""
 
         response_text = self.generate_text(prompt, temperature=0.2)
         result = self._parse_json_response(response_text)
