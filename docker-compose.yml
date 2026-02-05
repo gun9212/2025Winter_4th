@@ -44,7 +44,7 @@ services:
     volumes:
       - ./backend:/app
       - ./credentials:/app/credentials  # OAuth 토큰 저장을 위해 rw 필요
-      - ./scripts:/app/scripts:ro
+      - ./backend/scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
@@ -78,7 +78,7 @@ services:
     volumes:
       - ./backend:/app
       - ./credentials:/app/credentials  # OAuth 토큰 저장을 위해 rw 필요
-      - ./scripts:/app/scripts:ro
+      - ./backend/scripts:/app/scripts:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ./credentials/rclone.conf:/home/appuser/.config/rclone/rclone.conf:ro
