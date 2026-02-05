@@ -102,7 +102,7 @@ async def backup_db(session: AsyncSession) -> str:
     return str(filename)
 
 async def migrate(dry_run: bool):
-    engine = create_async_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+    engine = create_async_engine(str(settings.DATABASE_URL))
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     
     async with async_session() as session:

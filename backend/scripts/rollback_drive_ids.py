@@ -48,7 +48,7 @@ async def rollback(backup_file: str):
 
     logger.info("Backup loaded", count=len(backup_data))
 
-    engine = create_async_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+    engine = create_async_engine(str(settings.DATABASE_URL))
     async_session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with async_session() as session:
