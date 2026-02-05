@@ -53,18 +53,18 @@ class AgendaSummary(BaseModel):
 class MinutesGenerationRequest(BaseModel):
     """Request for Smart Minutes generation (결과지 자동 생성).
     
-    v2.0 Architecture:
-    - Uses DB preprocessed_content (from RAG pipeline) instead of Google Docs API
-    - Requires both agenda and transcript to be in DB (COMPLETED status)
-    - Dynamically injects placeholders into result template
+    v2.1 Architecture:
+    - Uses transcript_doc_id (Google Drive ID) from Picker
+    - Backend queries DB by drive_id to get preprocessed_content
+    - If not found or not COMPLETED → returns error with Admin tab guidance
     
     Required:
     - agenda_doc_id: Google Docs ID of agenda (안건지) - also used as template
-    - source_document_id: DB Document ID of transcript (속기록) - MUST be COMPLETED
+    - transcript_doc_id: Google Drive ID of transcript (속기록) - from Picker
     
-    Deprecated (will be removed in v3.0):
-    - transcript_doc_id: Replaced by source_document_id
-    - transcript_text: Replaced by source_document_id
+    Backend Lookup:
+    - Queries Document table by drive_id = transcript_doc_id
+    - Validates status == COMPLETED and preprocessed_content exists
     """
     
     agenda_doc_id: str = Field(
@@ -72,24 +72,10 @@ class MinutesGenerationRequest(BaseModel):
         description="Google Docs ID of the agenda template (안건지). Will be copied to create result document.",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
-    agenda_document_id: int | None = Field(
-        default=None,
-        description="DB Document ID of the agenda (안건지). If provided, uses preprocessed_content for placeholder generation.",
-    )
-    source_document_id: int = Field(
+    transcript_doc_id: str = Field(
         ...,
-        description="DB Document ID of transcript (속기록). REQUIRED: Must be COMPLETED status with preprocessed_content.",
-    )
-    # DEPRECATED fields - kept for backward compatibility
-    transcript_doc_id: str | None = Field(
-        default=None,
-        description="[DEPRECATED v2.0] Use source_document_id instead. Will be removed in v3.0.",
-        deprecated=True,
-    )
-    transcript_text: str | None = Field(
-        default=None,
-        description="[DEPRECATED v2.0] Use source_document_id instead. Will be removed in v3.0.",
-        deprecated=True,
+        description="Google Drive ID of transcript (속기록). Backend queries DB by this ID.",
+        examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
     template_doc_id: str | None = Field(
         default=None,

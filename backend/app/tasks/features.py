@@ -39,25 +39,24 @@ def run_async(coro):
 def generate_minutes(
     self,
     agenda_doc_id: str,
-    source_document_id: int,  # REQUIRED: DB Document ID of transcript
-    agenda_document_id: int | None = None,  # Optional: DB Document ID of agenda
-    transcript_doc_id: str | None = None,   # DEPRECATED
-    transcript_text: str | None = None,     # DEPRECATED
+    transcript_doc_id: str,  # v2.1: Google Drive ID from Picker
     template_doc_id: str | None = None,
     meeting_name: str = "Untitled Meeting",
     meeting_date: str | None = None,
     output_folder_id: str | None = None,
-    output_doc_id: str | None = None,  # Pre-created result doc ID
+    output_doc_id: str | None = None,
     user_email: str | None = None,
+    user_level: int = 2,
 ) -> dict[str, Any]:
     """
     Generate a result document from agenda template and meeting transcript.
     
-    v2.0 Smart Minutes Architecture (4-Phase):
+    v2.1 Smart Minutes Architecture (4-Phase):
     
-    Phase 0: DB Access + Validation
-        - Fetch transcript preprocessed_content from DB
+    Phase 0: DB Lookup by Drive ID
+        - Query DB by drive_id (transcript_doc_id from Picker)
         - Validate COMPLETED status
+        - If not found → Return error with Admin tab guidance
         
     Phase 1: Template Preparation
         - Copy agenda to create result document
@@ -73,10 +72,7 @@ def generate_minutes(
     
     Args:
         agenda_doc_id: Google Docs ID of agenda template (안건지)
-        source_document_id: DB Document ID of transcript (속기록) - REQUIRED
-        agenda_document_id: DB Document ID of agenda - for preprocessed_content
-        transcript_doc_id: DEPRECATED - use source_document_id
-        transcript_text: DEPRECATED - use source_document_id
+        transcript_doc_id: Google Drive ID of transcript (속기록) - from Picker
         template_doc_id: Optional template for result (if None, copies agenda)
         meeting_name: Meeting name for output document
         meeting_date: Meeting date (ISO format)
@@ -100,62 +96,68 @@ def generate_minutes(
         gemini = GeminiService()
         
         logger.info(
-            "🚀 [v2.0] Starting Smart Minutes generation",
+            "🚀 [v2.1] Starting Smart Minutes generation",
             meeting_name=meeting_name,
             agenda_doc_id=agenda_doc_id[:8] if agenda_doc_id else None,
-            source_document_id=source_document_id,
-            agenda_document_id=agenda_document_id,
+            transcript_doc_id=transcript_doc_id[:16] if transcript_doc_id else None,
             user_email=user_email,
         )
         
         # =====================================================================
-        # Phase 0: DB Access + RAG Validation
+        # Phase 0: DB Lookup by Drive ID (v2.1)
         # =====================================================================
         self.update_state(state="PROGRESS", meta={"progress": 10, "step": "Phase 0: DB 조회"})
         
-        async def _fetch_document_from_db(doc_id: int, doc_type: str = "transcript") -> tuple[str, str]:
-            """Fetch preprocessed_content from DB with RAG validation."""
+        async def _fetch_document_by_drive_id(drive_id: str) -> tuple[str, str, int]:
+            """Fetch preprocessed_content from DB by drive_id.
+            
+            Args:
+                drive_id: Google Drive file ID (from Picker)
+                
+            Returns:
+                Tuple of (preprocessed_content, drive_name, document_id)
+                
+            Raises:
+                ValueError: If document not found or not COMPLETED
+            """
             async with async_session_factory() as db:
                 result = await db.execute(
-                    select(Document).where(Document.id == doc_id)
+                    select(Document).where(Document.drive_id == drive_id)
                 )
                 doc = result.scalar_one_or_none()
                 
                 if not doc:
                     raise ValueError(
-                        f"📛 문서 ID {doc_id}를 찾을 수 없습니다. "
-                        f"RAG 자료학습을 먼저 진행해주세요!"
+                        f"📛 해당 문서가 RAG 자료학습 되지 않았습니다.\n\n"
+                        f"Admin 탭에서 먼저 자료학습을 진행해주세요!"
                     )
                 if doc.status != DocumentStatus.COMPLETED:
                     raise ValueError(
-                        f"📛 문서 ID {doc_id}가 아직 처리 중입니다 (상태: {doc.status}). "
-                        f"RAG 파이프라인이 완료될 때까지 기다려주세요!"
+                        f"📛 문서 '{doc.drive_name or 'Untitled'}'이(가) 아직 학습 중입니다.\n\n"
+                        f"현재 상태: {doc.status.value}\n"
+                        f"잠시 후 다시 시도하거나, Admin 탭에서 상태를 확인해주세요."
                     )
                 if not doc.preprocessed_content:
                     raise ValueError(
-                        f"📛 문서 ID {doc_id}의 전처리 내용이 비어있습니다. "
-                        f"RAG 파이프라인을 확인해주세요!"
+                        f"📛 문서 '{doc.drive_name or 'Untitled'}'의 전처리 내용이 비어있습니다.\n\n"
+                        f"Admin 탭에서 재학습을 진행해주세요."
                     )
                     
                 logger.info(
-                    f"✅ Fetched {doc_type} from DB",
-                    document_id=doc_id,
+                    "✅ Fetched transcript from DB by drive_id",
+                    document_id=doc.id,
                     drive_name=doc.drive_name,
                     content_length=len(doc.preprocessed_content),
                 )
-                return doc.preprocessed_content, doc.drive_id or ""
+                return doc.preprocessed_content, doc.drive_name or "Untitled", doc.id
         
-        # Fetch transcript (REQUIRED)
-        transcript_content, transcript_drive_id = run_async(
-            _fetch_document_from_db(source_document_id, "transcript")
+        # v2.1: Fetch transcript by drive_id (from Picker)
+        transcript_content, transcript_name, transcript_db_id = run_async(
+            _fetch_document_by_drive_id(transcript_doc_id)
         )
         
-        # Fetch agenda preprocessed_content if agenda_document_id provided
+        # Agenda uses Google Docs API directly (not from DB)
         agenda_preprocessed = None
-        if agenda_document_id:
-            agenda_preprocessed, _ = run_async(
-                _fetch_document_from_db(agenda_document_id, "agenda")
-            )
         
         # =====================================================================
         # Phase 1: Template Preparation (Placeholder Injection)

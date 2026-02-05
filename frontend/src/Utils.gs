@@ -220,27 +220,24 @@ function apiGetDocuments(skip, limit, status) {
 // ============================================
 
 /**
- * 결과지 생성 요청 (v2.0)
+ * 결과지 생성 요청 (v2.1)
  * @param {Object} params - 생성 파라미터
  * @returns {Object} task_id 포함 응답
  *
- * v2.0 Smart Minutes Architecture:
- * - source_document_id (필수): RAG 파이프라인으로 처리된 DB 문서 ID
- * - transcript_doc_id, transcript_text: DEPRECATED (하위 호환용 유지)
+ * v2.1 Smart Minutes Architecture:
+ * - transcript_doc_id (필수): Google Drive ID (Picker로 선택)
+ * - Backend가 Drive ID로 DB 조회 → RAG 미학습 시 에러 반환
  * - meeting_date: 'YYYY-MM-DD' 형식 문자열
  */
 function apiGenerateMinutes(params) {
-  // v2.0: source_document_id 필수 검증
-  const sourceDocumentId = params.sourceDocumentId
-    ? parseInt(params.sourceDocumentId, 10)
-    : null;
+  // v2.1: transcript_doc_id (Drive ID) 필수 검증
+  const transcriptDocId = params.transcriptDocId?.trim();
 
-  // Type Safety: NaN 방어
-  if (!sourceDocumentId || isNaN(sourceDocumentId) || sourceDocumentId <= 0) {
+  if (!transcriptDocId) {
     return {
       success: false,
       error:
-        "속기록을 선택해주세요.\n\nRAG 자료학습이 완료된 문서만 사용 가능합니다.\n문서가 목록에 없다면 Admin 탭에서 먼저 자료학습을 진행해주세요.",
+        "속기록 문서를 선택해주세요.\n\nGoogle Drive에서 파일을 선택한 후 다시 시도해주세요.",
       statusCode: 0,
     };
   }
@@ -254,13 +251,10 @@ function apiGenerateMinutes(params) {
   // 현재 사용자 이메일 가져오기 (Service Account 모드에서 파일 공유용)
   const userEmail = Session.getActiveUser().getEmail();
 
-  // v2.0 Payload: source_document_id 사용
+  // v2.1 Payload: transcript_doc_id (Drive ID) 사용
   const payload = {
     agenda_doc_id: params.agendaDocId,
-    source_document_id: sourceDocumentId, // v2.0 필수
-    agenda_document_id: params.agendaDocumentId
-      ? parseInt(params.agendaDocumentId, 10)
-      : null, // v2.0 선택
+    transcript_doc_id: transcriptDocId, // v2.1: Google Drive ID
     template_doc_id:
       params.templateDocId && params.templateDocId.trim() !== ""
         ? params.templateDocId.trim()
@@ -279,9 +273,9 @@ function apiGenerateMinutes(params) {
     user_email: userEmail || null,
   };
 
-  console.log("[apiGenerateMinutes] v2.0 Request:", {
+  console.log("[apiGenerateMinutes] v2.1 Request:", {
     agenda_doc_id: payload.agenda_doc_id,
-    source_document_id: payload.source_document_id,
+    transcript_doc_id: payload.transcript_doc_id,
     meeting_name: payload.meeting_name,
   });
 

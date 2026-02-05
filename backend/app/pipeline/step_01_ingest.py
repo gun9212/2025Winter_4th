@@ -156,13 +156,13 @@ class IngestionService:
         """
         return unicodedata.normalize("NFC", filename)
 
-    async def _fetch_drive_metadata(self, drive_folder_id: str) -> dict[str, str]:
+    async def _fetch_drive_metadata(self, drive_folder_id: str) -> dict[str, dict[str, str]]:
         """
-        Fetch metadata (specifically IDs) for all files in the Drive folder using rclone lsjson.
+        Fetch metadata (IDs and Names) for all files in the Drive folder using rclone lsjson.
         
         Returns:
-            Dictionary mapping relative path to Drive ID.
-            Example: {"Folder/File.pdf": "1A2B3..."}
+            Dictionary mapping relative path to {"id": drive_id, "name": drive_name}.
+            Example: {"Folder/File.pdf": {"id": "1A2B3...", "name": "File.pdf"}}
         """
         logger.info("[METADATA] Fetching Drive IDs via rclone lsjson", folder_id=drive_folder_id)
         
@@ -198,7 +198,7 @@ class IngestionService:
             import json
             items = json.loads(result.stdout)
             
-            drive_map = {}
+            drive_map: dict[str, dict[str, str]] = {}
             for item in items:
                 # rclone lsjson returns path relative to the root folder
                 path = item["Path"]
@@ -212,20 +212,24 @@ class IngestionService:
                 # If sync exports gdoc -> docx, we need to map the .docx path to this ID
                 ext = os.path.splitext(name)[1].lower()
                 
-                # Map authentic ID to the normalized path
-                drive_map[norm_path] = drive_id
+                # Map authentic ID and Name to the normalized path
+                # This fixes the "Untitled" bug by preserving original Drive file name
+                drive_map[norm_path] = {"id": drive_id, "name": name}
                 
                 # Special handling for exported files:
                 # If we have "Doc.gdoc", we anticipate "Doc.docx" locally
                 if ext == ".gdoc":
                     docx_path = norm_path.replace(".gdoc", ".docx")
-                    drive_map[docx_path] = drive_id
+                    docx_name = name.replace(".gdoc", ".docx")
+                    drive_map[docx_path] = {"id": drive_id, "name": docx_name}
                 elif ext == ".gsheet":
                     xlsx_path = norm_path.replace(".gsheet", ".xlsx")
-                    drive_map[xlsx_path] = drive_id
+                    xlsx_name = name.replace(".gsheet", ".xlsx")
+                    drive_map[xlsx_path] = {"id": drive_id, "name": xlsx_name}
                 elif ext == ".gslides":
                     pptx_path = norm_path.replace(".gslides", ".pptx")
-                    drive_map[pptx_path] = drive_id
+                    pptx_name = name.replace(".gslides", ".pptx")
+                    drive_map[pptx_path] = {"id": drive_id, "name": pptx_name}
                     
             logger.info("[METADATA] Fetched metadata for files", count=len(drive_map))
             return drive_map
@@ -270,16 +274,24 @@ class IngestionService:
         for file_info in files:
             file_path = file_info["path"] # This is relative path
             
-            # Determine Drive ID
-            # 1. Try to find in the map (Real Google Drive ID)
+            # Determine Drive ID and Name
+            # 1. Try to find in the map (Real Google Drive metadata)
             # 2. Fallback to local path (Legacy/Offline support)
-            real_drive_id = drive_id_map.get(file_path) if drive_id_map else None
+            drive_meta = drive_id_map.get(file_path) if drive_id_map else None
             
-            if real_drive_id:
-                drive_id = real_drive_id
+            if drive_meta and isinstance(drive_meta, dict):
+                # New format: {"id": "...", "name": "..."}
+                drive_id = drive_meta.get("id", f"local:{file_path}")
+                # Use Drive API name instead of local filename (fixes Untitled bug)
+                file_name = drive_meta.get("name") or file_info.get("name", "Untitled")
+            elif drive_meta and isinstance(drive_meta, str):
+                # Legacy format: direct ID string (backward compatibility)
+                drive_id = drive_meta
+                file_name = file_info.get("name", "Untitled")
             else:
                 # Fallback: still use local path but warn
                 drive_id = f"local:{file_path}"
+                file_name = file_info.get("name", "Untitled")
                 if drive_id_map: # Only warn if we expected to find it
                     logger.warning("[REGISTER] ID not found in map, using local", path=file_path)
 
@@ -291,7 +303,7 @@ class IngestionService:
 
             doc = Document(
                 drive_id=drive_id,
-                drive_name=file_info["name"],
+                drive_name=file_name,  # Use Drive API name (not local filename)
                 drive_path=file_info["path"], # Consistently store relative path here
                 mime_type=_get_mime_type(file_info["extension"]),
                 doc_type=file_info["doc_type"],
@@ -311,7 +323,7 @@ class IngestionService:
             logger.debug(
                 "[REGISTER] Added new document",
                 drive_id=drive_id,
-                name=file_info["name"]
+                name=file_name
             )
 
         await db.commit()
