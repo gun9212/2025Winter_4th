@@ -483,15 +483,17 @@ def clean_markdown(text: str) -> str:
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
     text = re.sub(r'__([^_]+)__', r'\1', text)
     
-    # Remove italic (*text* or _text_) - careful not to match **
-    text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'\1', text)
-    text = re.sub(r'(?<!_)_([^_]+)_(?!_)', r'\1', text)
-    
     # Remove headers (# ## ###) at line start
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     
-    # Convert bullet points to plain text with bullet character
+    # IMPORTANT: Convert bullet points BEFORE italic removal
+    # Otherwise `* item` gets captured by the italic regex first
     text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
+    
+    # Remove italic (*text* or _text_) - careful not to match **
+    # This comes AFTER bullet conversion to avoid conflicts
+    text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'\1', text)
+    text = re.sub(r'(?<!_)_([^_]+)_(?!_)', r'\1', text)
     
     # Keep numbered lists but clean formatting
     text = re.sub(r'^(\d+)\.\s+', r'\1. ', text, flags=re.MULTILINE)
