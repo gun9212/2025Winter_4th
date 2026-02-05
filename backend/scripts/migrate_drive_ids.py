@@ -138,6 +138,17 @@ async def migrate(dry_run: bool):
             current_path = normalize_filename(current_path)
             
             new_id = drive_map.get(current_path)
+
+            if not new_id:
+                # Fallback: DB path might start with the root folder name/id, 
+                # but rclone returns paths relative to root.
+                # Try removing the first path component.
+                parts = current_path.split('/', 1)
+                if len(parts) > 1:
+                    stripped_path = parts[1]
+                    new_id = drive_map.get(stripped_path)
+                    if new_id:
+                        logger.debug("Matched by stripping root", original=current_path, stripped=stripped_path)
             
             if new_id:
                 if dry_run:
