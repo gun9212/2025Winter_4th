@@ -43,8 +43,8 @@ structlog.configure(
 )
 logger = structlog.get_logger()
 
-BACKUP_DIR = Path("backup")
-BACKUP_DIR.mkdir(exist_ok=True)
+BACKUP_DIR = Path("/tmp/council-ai/backup")
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 def normalize_filename(filename: str) -> str:
     return unicodedata.normalize("NFC", filename)
