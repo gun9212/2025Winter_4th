@@ -17,6 +17,7 @@
     pickerLoaded: false,
     oauthToken: null,
     developerKey: null,
+    userEmail: null,
   };
 
   // ============================================
@@ -63,6 +64,7 @@
     google.script.run
       .withSuccessHandler(function (email) {
         document.getElementById("user-email").textContent = email || "";
+        State.userEmail = email || ""; // Store for auto-assign
       })
       .getCurrentUserEmail();
   }
@@ -955,7 +957,7 @@
         </div>
         <div>
           <label class="text-xs text-gray-500">담당자 (이메일)</label>
-          <input type="email" class="todo-assignee w-full border border-gray-200 rounded px-2 py-1 text-xs" placeholder="email@example.com" value="${todo.assignee || ""}" data-field="assignee">
+          <input type="email" class="todo-assignee w-full border border-gray-200 rounded px-2 py-1 text-xs" placeholder="email@example.com" value="${todo.assignee || State.userEmail || ""}" data-field="assignee">
         </div>
       </div>
       ${todo.context ? `<p class="text-xs text-gray-400 mt-2 ml-6 truncate" title="${escapeHtml(todo.context)}">${escapeHtml(todo.context)}</p>` : ""}
