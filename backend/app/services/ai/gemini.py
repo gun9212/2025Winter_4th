@@ -286,6 +286,8 @@ JSON만 출력하세요."""
         """
         Extract todo/action items from a result document for Calendar Sync.
         
+        Enhanced for Korean meeting transcripts (대화형 속기록).
+        
         Args:
             content: Full text content of the result document
             include_context: Whether to include source context
@@ -293,36 +295,79 @@ JSON만 출력하세요."""
         Returns:
             List of todo items with content, assignee, deadline, context
         """
-        prompt = f"""다음 텍스트(회의 결과지 또는 속기록)에서 해야 할 일(Todo/Action Item)을 추출해주세요.
+        # Few-shot example for transcript-style content
+        example_transcript = """예시 입력:
+홍길동: 다음 MT 장소는 제가 알아볼게요. 이번 주 금요일까지 후보 정리해서 공유드리겠습니다.
+김철수: 네, 그럼 예산안은 제가 작성할게요. 다음 회의 전까지 초안 만들어놓을게요.
+"""
+        example_output = """예시 출력:
+[
+    {"content": "MT 장소 후보 조사 및 정리", "context": "MT 관련 논의", "assignee": "홍길동", "suggested_date": "이번 주 금요일", "parsed_date": null},
+    {"content": "예산안 초안 작성", "context": "MT 관련 논의", "assignee": "김철수", "suggested_date": "다음 회의 전", "parsed_date": null}
+]"""
+
+        prompt = f"""당신은 학생회 회의록 분석 전문가입니다.
+산발적인 대화 속에서도 '행동이 필요한 작업(Action Item)'을 정확히 식별합니다.
 
 ## 분석 대상 텍스트
-{content[:8000]}  # Limit context length
+{content[:10000]}
 
 ## 추출 기준
-1. **명시적인 할 일**: "~예정", "~진행", "~완료 필요" 등 문맥상 해야 할 일
-2. **대화 속 할 일**: "제가 하겠습니다", "이건 맡겨주세요" 등 발화에서 유추
-3. **담당자**: 언급된 이름, 직책, 부서 (확실치 않으면 null)
-4. **마감일**: 언급된 날짜 (없으면 null)
+1. **발화에서 유추**: "제가 할게요", "맡겠습니다", "알아볼게요", "확인해보겠습니다" 등
+2. **명시적 지시**: "~해주세요", "~부탁드립니다", "담당: 누구"
+3. **마감 언급**: "언제까지", "다음 주", "금요일", "회의 전까지"
+4. **결정 사항**: "~로 결정", "~하기로 함" (이것도 후속 조치가 필요하면 추출)
 
-*주의: 텍스트가 대화형(속기록)인 경우, 발화자의 의도와 맥락을 파악하여 실질적인 Action Item을 도출하세요.*
+*중요: 대화형 속기록에서도 발화자의 약속이나 의지 표현을 Action Item으로 인식하세요.*
+*할 일이 전혀 없어 보여도, 회의에서 논의된 후속 조치가 있다면 추출하세요.*
 
-## 출력 형식 (JSON)
+## Few-shot 예시
+{example_transcript}
+{example_output}
+
+## 실제 분석 대상
+위 텍스트에서 할 일(Action Item)을 추출하세요.
+
+## 출력 형식 (JSON 배열만 출력)
 [
     {{
-        "content": "할 일 내용 (구체적으로)",
-        "context": "문맥 정보 (발언자, 관련 안건 등)",
-        "assignee": "담당자 (이름/직책) 또는 담당 부서 (없으면 null)",
-        "suggested_date": "언급된 날짜 텍스트 (없으면 null)",
+        "content": "구체적인 할 일 내용",
+        "context": "관련 안건 또는 발언 맥락",
+        "assignee": "담당자 이름/직책 (없으면 null)",
+        "suggested_date": "언급된 마감일 텍스트 (없으면 null)",
         "parsed_date": "YYYY-MM-DD 형식 (파싱 불가 시 null)"
     }}
 ]
 
-JSON 배열만 출력하세요. 배열 외에 아무런 설명도 포함하지 마세요."""
+반드시 JSON 배열만 출력하세요. 설명이나 주석을 추가하지 마세요.
+할 일이 없으면 빈 배열 []을 출력하세요."""
 
         response_text = self.generate_text(prompt, temperature=0.2)
+        
+        # Debug logging for response analysis
+        logger.debug(
+            "Gemini todo extraction response",
+            response_preview=response_text[:500] if response_text else "(empty)",
+            response_length=len(response_text) if response_text else 0,
+        )
+        
         result = self._parse_json_response(response_text)
         
-        return result if isinstance(result, list) else []
+        # Additional logging for parsing result
+        if not isinstance(result, list):
+            logger.warning(
+                "Todo extraction returned non-list",
+                result_type=type(result).__name__,
+                response_preview=response_text[:300] if response_text else "(empty)",
+            )
+            return []
+        
+        logger.info(
+            "Todo extraction parsed successfully",
+            todos_count=len(result),
+        )
+        
+        return result
 
     def generate_handover_insight(
         self,
