@@ -1278,7 +1278,7 @@
 
   function generateHandover() {
     const year = parseInt(document.getElementById("handover-year").value);
-    const department = document.getElementById("handover-department").value;
+    // department filter removed in v2.0 refactoring
     const folderId = document.getElementById("handover-folder-id").value;
 
     // 유효성 검사
@@ -1325,7 +1325,6 @@
       })
       .apiGenerateHandover({
         targetYear: year,
-        department: department || null,
         targetFolderId: folderId || null,
       });
   }

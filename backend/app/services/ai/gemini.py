@@ -324,6 +324,70 @@ JSON 배열만 출력하세요. 배열 외에 아무런 설명도 포함하지 �
         
         return result if isinstance(result, list) else []
 
+    def generate_handover_insight(
+        self,
+        event_title: str,
+        event_content: str,
+    ) -> dict[str, Any]:
+        """
+        Generate deep analysis for a single event based on its document content.
+        
+        This function reads actual meeting transcripts, agendas, and results
+        to produce strategic insights for the next student council.
+        
+        Args:
+            event_title: Title of the event/project
+            event_content: Aggregated preprocessed_content from related documents
+            
+        Returns:
+            Dict with keys: overview, key_decisions, success_points,
+                            improvement_points, next_year_advice
+        """
+        # Limit content to prevent context overflow
+        content_truncated = event_content[:15000] if event_content else "(문서 내용 없음)"
+        
+        prompt = f"""당신은 학생회 인수인계 담당자입니다.
+후배 학생회가 내년에 이 행사를 더 잘 운영할 수 있도록 분석해주세요.
+
+## 행사명
+{event_title}
+
+## 관련 문서 내용 (회의록, 안건지, 결과지 등)
+{content_truncated}
+
+## 분석 요청
+위 문서 내용을 바탕으로 다음 항목을 분석하세요:
+1. 행사 개요 (언제, 어디서, 무엇을)
+2. 주요 결정사항 (구체적인 팩트 위주)
+3. 잘한 점 (성공 요인)
+4. 아쉬운 점 / 개선 필요 사항
+5. 내년 담당자를 위한 구체적인 조언
+
+## 출력 형식 (JSON)
+{{
+    "overview": "행사 개요 요약 (1-2문장)",
+    "key_decisions": ["주요 결정사항1", "주요 결정사항2"],
+    "success_points": ["잘한 점1", "잘한 점2"],
+    "improvement_points": ["아쉬운 점1", "개선 필요 사항2"],
+    "next_year_advice": "내년 담당자를 위한 구체적인 조언 (3-5문장)"
+}}
+
+JSON만 출력하세요. 문서에 정보가 부족하면 해당 항목은 빈 배열이나 "(정보 부족)"으로 표시하세요."""
+
+        response_text = self.generate_text(prompt, temperature=0.3)
+        result = self._parse_json_response(response_text)
+        
+        if not result:
+            return {
+                "overview": "(분석 실패)",
+                "key_decisions": [],
+                "success_points": [],
+                "improvement_points": [],
+                "next_year_advice": "(분석 실패)",
+            }
+        
+        return result
+
     def generate_handover_content(
         self,
         events_data: list[dict[str, Any]],

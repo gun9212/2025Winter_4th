@@ -327,7 +327,7 @@ class HandoverGenerationRequest(BaseModel):
     )
     department: str | None = Field(
         default=None,
-        description="Department filter (None for all departments)",
+        description="DEPRECATED: Department filter is no longer used. Kept for backward compatibility.",
         examples=["문화국", "복지국", "디자인홍보국"],
     )
     target_folder_id: str | None = Field(

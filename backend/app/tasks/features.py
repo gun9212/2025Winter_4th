@@ -504,7 +504,7 @@ def sync_calendar(
 def generate_handover(
     self,
     target_year: int,
-    department: str | None = None,
+    department: str | None = None,  # Deprecated, kept for API compatibility
     target_folder_id: str | None = None,
     doc_title: str | None = None,
     include_event_summaries: bool = True,
@@ -514,15 +514,15 @@ def generate_handover(
     """
     Generate a comprehensive handover document for a specific year.
     
-    Handover Feature Implementation:
-    1. Query DB for all Events and Documents of target year
-    2. Filter by department if specified
-    3. Use Gemini to generate insights and recommendations
-    4. Create Google Doc with insertText
+    v2.0 Refactored Logic:
+    1. Query ALL Events for target_year (no department filter)
+    2. For each Event, aggregate preprocessed_content from related Documents
+    3. Use Gemini to generate deep insights per event
+    4. Compile into final handover document
     
     Args:
         target_year: Year to generate handover for
-        department: Optional department filter
+        department: DEPRECATED - Ignored for backward compatibility
         target_folder_id: Google Drive folder ID for output
         doc_title: Document title
         include_event_summaries: Include per-event summaries
@@ -540,112 +540,135 @@ def generate_handover(
             from app.models.document import Document
             from sqlalchemy import select
             
-            # Generate title if not provided
-            _doc_title = doc_title
-            if not _doc_title:
-                dept_text = f"{department} " if department else ""
-                _doc_title = f"제38대 {dept_text}학생회 인수인계서 ({target_year})"
+            # Generate title (ignore department)
+            _doc_title = doc_title or f"제38대 학생회 인수인계서 ({target_year})"
             
             logger.info(
-                "Starting handover generation",
+                "🚀 Starting handover generation (v2.0 - Event-Centric)",
                 target_year=target_year,
-                department=department,
                 doc_title=_doc_title,
             )
             
-            self.update_state(state="PROGRESS", meta={"progress": 5, "step": "Initializing"})
+            self.update_state(state="PROGRESS", meta={"progress": 5, "step": "초기화"})
             
             docs_service = GoogleDocsService()
             gemini = GeminiService()
             
-            # Step 1: Query events and documents from DB
-            self.update_state(state="PROGRESS", meta={"progress": 10, "step": "Querying database"})
+            # =====================================================================
+            # Step 1: Query Events by year only (no department filter)
+            # =====================================================================
+            self.update_state(state="PROGRESS", meta={"progress": 10, "step": "이벤트 조회"})
             
             events_data = []
             statistics = {
                 "total_events": 0,
-                "total_meetings": 0,
                 "total_documents": 0,
                 "events_by_category": {},
                 "events_by_status": {},
             }
             
             async with async_session_factory() as db:
-                # Query events for target year
+                # Query all events for target year
                 event_query = select(Event).where(Event.year == target_year)
-                if department:
-                    event_query = event_query.where(Event.category == department)
-                
                 result = await db.execute(event_query)
                 events = result.scalars().all()
                 statistics["total_events"] = len(events)
                 
                 logger.info(f"Found {len(events)} events for year {target_year}")
                 
-                # Process each event
-                for event in events:
+                if not events:
+                    logger.warning("No events found for target year")
+                
+                # =====================================================================
+                # Step 2: For each Event, aggregate Document content
+                # =====================================================================
+                total_events = len(events)
+                for i, event in enumerate(events):
+                    progress = 10 + int((i / max(total_events, 1)) * 50)  # 10-60%
+                    self.update_state(
+                        state="PROGRESS",
+                        meta={"progress": progress, "step": f"문서 분석 ({i+1}/{total_events})"}
+                    )
+                    
                     # Count by category
                     cat = event.category or "기타"
                     statistics["events_by_category"][cat] = statistics["events_by_category"].get(cat, 0) + 1
                     
                     # Count by status
-                    stat = event.status or "unknown"
+                    stat = str(event.status.value) if event.status else "unknown"
                     statistics["events_by_status"][stat] = statistics["events_by_status"].get(stat, 0) + 1
                     
-                    # Get related documents (prioritize: 결과지 > 속기록 > 안건지)
+                    # Query related documents
                     doc_query = select(Document).where(Document.event_id == event.id)
                     doc_result = await db.execute(doc_query)
                     docs = doc_result.scalars().all()
                     statistics["total_documents"] += len(docs)
                     
-                    # Find best document for summary
-                    summary_doc = None
+                    # Aggregate preprocessed_content (limit per doc to prevent overflow)
+                    context_parts = []
                     for doc in docs:
-                        if doc.meeting_subtype == "result":
-                            summary_doc = doc
-                            break
-                        elif doc.meeting_subtype == "transcript" and not summary_doc:
-                            summary_doc = doc
-                        elif doc.meeting_subtype == "agenda" and not summary_doc:
-                            summary_doc = doc
+                        if doc.preprocessed_content:
+                            # Limit each document to 4000 chars to prevent context overflow
+                            context_parts.append(doc.preprocessed_content[:4000])
+                    
+                    event_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
+                    
+                    # =====================================================================
+                    # Step 3: Generate insight per event
+                    # =====================================================================
+                    insight = {}
+                    if include_insights and event_context:
+                        insight = gemini.generate_handover_insight(
+                            event_title=event.title,
+                            event_content=event_context,
+                        )
+                        logger.debug(
+                            "Generated insight for event",
+                            event_id=event.id,
+                            event_title=event.title[:30],
+                        )
                     
                     events_data.append({
                         "event_id": event.id,
                         "title": event.title,
                         "event_date": event.event_date.isoformat() if event.event_date else "미정",
                         "category": event.category,
-                        "status": event.status,
-                        "summary": summary_doc.summary if summary_doc and hasattr(summary_doc, 'summary') else "(요약 없음)",
+                        "status": stat,
                         "documents_count": len(docs),
+                        # Deep analysis results
+                        "overview": insight.get("overview", "(분석 없음)"),
+                        "key_decisions": insight.get("key_decisions", []),
+                        "success_points": insight.get("success_points", []),
+                        "improvement_points": insight.get("improvement_points", []),
+                        "next_year_advice": insight.get("next_year_advice", ""),
                     })
-                    
-                    if event.category == "회의":
-                        statistics["total_meetings"] += 1
             
-            self.update_state(state="PROGRESS", meta={"progress": 40, "step": "Generating content"})
+            # =====================================================================
+            # Step 4: Generate final handover document
+            # =====================================================================
+            self.update_state(state="PROGRESS", meta={"progress": 65, "step": "인수인계서 생성"})
             
-            # Step 2: Generate handover content with Gemini
             handover_content = gemini.generate_handover_content(
                 events_data=events_data,
                 year=target_year,
-                department=department,
+                department=None,  # Ignore department
                 include_insights=include_insights,
             )
             
-            self.update_state(state="PROGRESS", meta={"progress": 70, "step": "Creating document"})
+            self.update_state(state="PROGRESS", meta={"progress": 80, "step": "문서 작성"})
             
-            # Step 3: Create Google Doc
+            # Create Google Doc
             new_doc = docs_service.create_document(_doc_title)
             new_doc_id = new_doc.get("documentId")
             
             logger.info("Created handover document", doc_id=new_doc_id)
             
-            # Step 4: Insert content
-            self.update_state(state="PROGRESS", meta={"progress": 85, "step": "Writing content"})
+            # Insert content
+            self.update_state(state="PROGRESS", meta={"progress": 90, "step": "내용 삽입"})
             
             docs_service.insert_text(new_doc_id, handover_content)
             
-            self.update_state(state="PROGRESS", meta={"progress": 95, "step": "Finalizing"})
+            self.update_state(state="PROGRESS", meta={"progress": 95, "step": "완료"})
             
             result = {
                 "status": "SUCCESS",
@@ -653,16 +676,17 @@ def generate_handover(
                 "output_doc_link": f"https://docs.google.com/document/d/{new_doc_id}/edit",
                 "doc_title": _doc_title,
                 "target_year": target_year,
-                "department": department,
+                "department": None,  # Deprecated
                 "statistics": statistics,
                 "event_summaries": events_data if include_event_summaries else [],
             }
             
             logger.info(
-                "Handover generation completed",
+                "🎉 Handover generation completed (v2.0)",
                 target_year=target_year,
                 output_doc_id=new_doc_id,
                 events_processed=len(events_data),
+                total_docs_analyzed=statistics["total_documents"],
             )
             
             return result
@@ -677,7 +701,8 @@ def generate_handover(
                 "status": "FAILURE",
                 "error": str(e),
                 "target_year": target_year,
-                "department": department,
+                "department": None,
             }
     
     return run_async(_process())
+
