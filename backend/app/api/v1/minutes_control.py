@@ -22,35 +22,32 @@ router = APIRouter()
     "/generate",
     response_model=MinutesGenerationResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate result document (Smart Minutes v2.0)",
+    summary="Generate result document (Smart Minutes v2.1)",
     description="""
     Generate a result document from agenda template and meeting transcript.
     
-    **v2.0 Smart Minutes Architecture:**
-    Uses DB preprocessed_content from RAG pipeline instead of Google Docs API.
+    **v2.1 Smart Minutes Architecture:**
+    - Uses transcript_doc_id (Google Drive ID) from Picker
+    - Backend queries DB by drive_id to get preprocessed_content
+    - If not found or not COMPLETED → returns error with Admin tab guidance
     
     **Required Input:**
     1. `agenda_doc_id`: Google Docs ID of agenda template (안건지)
-    2. `source_document_id`: DB Document ID of transcript (속기록) - MUST be COMPLETED
+    2. `transcript_doc_id`: Google Drive ID of transcript (속기록) - from Picker
     
     **Optional Input:**
-    - `agenda_document_id`: DB Document ID of agenda for preprocessed_content
     - `output_doc_id`: Pre-created result document ID
+    - `output_folder_id`: Google Drive folder ID for output
     
     **Processing (Async via Celery - 4 Phases):**
-    - Phase 0: DB Access + RAG Validation
+    - Phase 0: DB Lookup by Drive ID + RAG Validation
     - Phase 1: Template Preparation (Placeholder Injection)
     - Phase 2: Summarization with Gemini
     - Phase 3: Replacement + Fallback
     
-    **Placeholder Convention:**
-    - `{report_N_result}` for 보고안건 N
-    - `{discuss_N_result}` for 논의안건 N
-    - `{other_N_result}` for 기타안건 N
-    
     **Error Handling:**
-    - If document not found: "RAG 자료학습을 먼저 진행해주세요!"
-    - If placeholder not found: Appends summary to document end (Fallback)
+    - If document not found in DB: "Admin 탭에서 먼저 자료학습을 진행해주세요!"
+    - If document not COMPLETED: "아직 학습 중입니다. Admin 탭에서 상태를 확인해주세요."
     """,
 )
 async def generate_minutes(
@@ -67,18 +64,16 @@ async def generate_minutes(
         from app.tasks.features import generate_minutes as generate_minutes_task
         
         logger.info(
-            "Queueing Smart Minutes v2.0 generation",
+            "Queueing Smart Minutes v2.1 generation",
             agenda_doc_id=request.agenda_doc_id[:8],
-            source_document_id=request.source_document_id,
-            agenda_document_id=request.agenda_document_id,
+            transcript_doc_id=request.transcript_doc_id[:16] if request.transcript_doc_id else None,
             meeting_name=request.meeting_name,
         )
         
-        # Queue Celery task with v2.0 parameters
+        # Queue Celery task with v2.1 parameters
         task = generate_minutes_task.delay(
             agenda_doc_id=request.agenda_doc_id,
-            source_document_id=request.source_document_id,
-            agenda_document_id=request.agenda_document_id,
+            transcript_doc_id=request.transcript_doc_id,  # v2.1: Drive ID from Picker
             template_doc_id=request.template_doc_id,
             meeting_name=request.meeting_name,
             meeting_date=request.meeting_date.isoformat(),
@@ -96,11 +91,9 @@ async def generate_minutes(
     except Exception as e:
         logger.error("Failed to queue minutes generation", error=str(e))
         # Fallback: return placeholder task_id if Celery not available
-        task_id = f"minutes-{request.agenda_doc_id[:8]}-placeholder"
-        return MinutesGenerationResponse(
-            task_id=task_id,
-            status="PENDING",
-            message=f"Smart Minutes generation queued for '{request.meeting_name}'",
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to queue task: {str(e)}"
         )
 
 

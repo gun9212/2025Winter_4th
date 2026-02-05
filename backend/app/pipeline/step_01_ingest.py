@@ -376,6 +376,158 @@ class IngestionService:
 
     # ... (register_google_forms_to_db remains unchanged) ...
 
+# =========================================================================
+    # MISSING METHODS RESTORED
+    # =========================================================================
+
+    async def sync_from_drive(self, folder_id: str) -> IngestionResult:
+        """
+        Sync files from Google Drive to local storage using rclone.
+        """
+        logger.info("[SYNC] Starting rclone sync", folder_id=folder_id)
+        
+        # Determine source
+        source = f"{RCLONE_REMOTE_NAME}:{folder_id}"
+        dest = str(self.work_dir)
+        
+        # Build command
+        cmd = [
+            "rclone", "sync", source, dest,
+            "--drive-export-formats", RCLONE_EXPORT_FORMATS,
+            "--drive-root-folder-id", folder_id,
+            "--drive-service-account-file", os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
+            "--create-empty-src-dirs=false",
+            "--drive-skip-shortcuts",
+            "-v",
+        ]
+        
+        # Add includes
+        for pattern in RCLONE_INCLUDE_PATTERNS:
+            cmd.extend(["--include", pattern])
+            
+        # Add excludes
+        for pattern in RCLONE_EXCLUDE_PATTERNS:
+            cmd.extend(["--exclude", pattern])
+
+        try:
+            # Run rclone (blocking call in thread)
+            process = await asyncio.to_thread(
+                subprocess.run,
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            # Simple parsing of logs would go here, simplified for restoration
+            return IngestionResult(
+                files_synced=0, # Placeholder
+                files_failed=0,
+                total_size_bytes=0,
+                sync_log=[process.stderr],
+                errors=[]
+            )
+            
+        except subprocess.CalledProcessError as e:
+            logger.error("[SYNC] Rclone failed", error=e.stderr)
+            return IngestionResult(
+                files_synced=0,
+                files_failed=1,
+                total_size_bytes=0,
+                sync_log=[],
+                errors=[e.stderr]
+            )
+
+    def scan_local_files(self) -> list[dict[str, Any]]:
+        """
+        Scan local directory for supported files.
+        """
+        files = []
+        for root, _, filenames in os.walk(self.work_dir):
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in SUPPORTED_EXTENSIONS:
+                    continue
+                
+                # Treat empty extension as .gdoc (Google Doc)
+                if ext == "":
+                    ext = ".gdoc"
+
+                full_path = Path(root) / filename
+                rel_path = str(full_path.relative_to(self.work_dir))
+                
+                files.append({
+                    "path": rel_path,
+                    "full_path": str(full_path),
+                    "name": filename,
+                    "extension": ext,
+                    "size": full_path.stat().st_size,
+                    "modified_time": datetime.fromtimestamp(full_path.stat().st_mtime),isoformat(),
+                    "doc_type": EXTENSION_TO_DOCTYPE.get(ext, DocumentType.OTHER),
+                })
+        return files
+
+    async def collect_google_form_links(self, folder_id: str) -> list[dict[str, str]]:
+        """
+        Collect Google Forms using rclone lsjson.
+        """
+        cmd = [
+            "rclone", "lsjson", f"{RCLONE_REMOTE_NAME}:",
+            "--drive-root-folder-id", folder_id,
+            "--recursive",
+            "--files-only",
+            "--include", "*.gform",
+            "--drive-service-account-file", os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        ]
+        
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run, cmd, capture_output=True, check=True
+            )
+            import json
+            items = json.loads(result.stdout)
+            
+            forms = []
+            for item in items:
+                forms.append({
+                    "id": item["ID"],
+                    "name": item["Name"],
+                    "path": item["Path"],
+                    "mime_type": item["MimeType"]
+                })
+            return forms
+        except Exception as e:
+            logger.error("Failed to collect forms", error=str(e))
+            return []
+
+    async def register_google_forms_to_db(self, db: AsyncSession, forms: list[dict[str, str]]) -> dict[str, Any]:
+        """
+        Register Google Forms to DB.
+        """
+        count = 0
+        for form in forms:
+            # Check duplicate
+            exists = await db.execute(select(Document).where(Document.drive_id == form["id"]))
+            if exists.scalar():
+                continue
+                
+            doc = Document(
+                drive_id=form["id"],
+                drive_name=form["name"],
+                drive_path=form["path"],
+                mime_type="application/vnd.google-apps.form",
+                doc_type=DocumentType.OTHER,
+                status=DocumentStatus.COMPLETED, # Forms are links, treated as complete
+                doc_metadata={"source": "rclone_lsjson"}
+            )
+            db.add(doc)
+            count += 1
+        
+        await db.commit()
+        return {"new_forms": count}
+
+    # =========================================================================
+
     async def run_step1(
         self,
         db: AsyncSession,
