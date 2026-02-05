@@ -211,7 +211,19 @@ def run_full_pipeline(
                     caption_images=True,
                 )
                 
-                document.parsed_content = parse_result.html_content
+                # BUGFIX: Use markdown_content instead of html_content
+                # Upstage API returns empty html_content, actual content is in markdown_content
+                logger.info(
+                    "🔍 [DEBUG] Parsing Result",
+                    document_id=document.id,
+                    html_len=len(parse_result.html_content),
+                    markdown_len=len(parse_result.markdown_content),
+                    text_len=len(parse_result.text_content),
+                    images_count=len(parse_result.images),
+                    tables_count=len(parse_result.tables),
+                )
+                
+                document.parsed_content = parse_result.markdown_content  # FIXED!
                 document.status = DocumentStatus.PREPROCESSING
                 await db.flush()
                 
