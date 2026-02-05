@@ -405,17 +405,24 @@
           const scoreClass =
             scorePercent >= 80 ? "high" : scorePercent >= 50 ? "medium" : "low";
 
-          // 문서 제목
+          // 문서 제목 및 링크
           const title =
             src.document_title || src.document_name || src.title || "Document";
-          // GAS 환경에서 '#'는 ERR_FAILED를 유발하므로 javascript:void(0) 사용
-          const driveLink = src.drive_link || src.url || "javascript:void(0)";
+          const driveLink = src.drive_link || src.url || null;
+
+          // HTML 문자열로 직접 생성 (GAS 호환성 위해)
+          let titleHtml;
+          if (driveLink) {
+            titleHtml = `<a href="${driveLink}" target="_blank" class="source-link" style="color: #1a73e8; text-decoration: underline; cursor: pointer;">${escapeHtml(title)}</a>`;
+          } else {
+            titleHtml = `<span style="color: #666;">${escapeHtml(title)}</span>`;
+          }
 
           sourceItem.innerHTML = `
-          <a href="${driveLink}" target="_blank" class="source-link">${escapeHtml(title)}</a>
-          <span class="source-score ${scoreClass}">${scorePercent}%</span>
-          ${src.section_header ? `<div class="source-section">📑 ${escapeHtml(src.section_header)}</div>` : ""}
-        `;
+            ${titleHtml}
+            <span class="source-score ${scoreClass}">${scorePercent}%</span>
+            ${src.section_header ? `<div class="source-section">📑 ${escapeHtml(src.section_header)}</div>` : ""}
+          `;
 
           sourcesContainer.appendChild(sourceItem);
         });
@@ -713,9 +720,9 @@
           if (placeholders.length > 0) {
             alert(
               "📋 발견된 Placeholder (" +
-                placeholders.length +
-                "개):\n\n" +
-                placeholders.map((p) => "• {" + p + "}").join("\n"),
+              placeholders.length +
+              "개):\n\n" +
+              placeholders.map((p) => "• {" + p + "}").join("\n"),
             );
           } else {
             alert(
@@ -1139,8 +1146,8 @@
         .join("\n");
       alert(
         "⚠️ 다음 항목에 문제가 있습니다:\n\n" +
-          warnings +
-          "\n\n해당 항목은 제외하고 등록합니다.",
+        warnings +
+        "\n\n해당 항목은 제외하고 등록합니다.",
       );
     }
 
@@ -1268,7 +1275,7 @@
 
     // Permission Debugger: 사용자 권한 정보 로드
     loadUserProfile();
-    
+
     // Note: Handover 관련 이벤트 리스너는 initDocsTab()에서 처리 (Docs 탭으로 이동됨)
   }
 
@@ -1277,17 +1284,17 @@
    */
   function loadUserProfile() {
     google.script.run
-      .withSuccessHandler(function(profile) {
+      .withSuccessHandler(function (profile) {
         const container = document.getElementById("user-profile-content");
         if (container && profile) {
-          const levelBadge = profile.isAdmin 
+          const levelBadge = profile.isAdmin
             ? '<span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-medium">👑 회장단 (Level 1)</span>'
             : '<span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">Level ' + profile.level + '</span>';
-          
+
           const handoverBadge = profile.canCreateHandover
             ? '<span class="text-green-600 text-xs ml-2">✓ 인수인계서 생성 가능</span>'
             : '<span class="text-gray-400 text-xs ml-2">✗ 인수인계서 생성 불가</span>';
-          
+
           container.innerHTML = `
             <div class="flex items-center gap-2 mb-2">
               <span class="text-gray-500">📧</span>
@@ -1301,7 +1308,7 @@
           `;
         }
       })
-      .withFailureHandler(function(error) {
+      .withFailureHandler(function (error) {
         console.error("[Council-AI] Failed to load user profile:", error);
         const container = document.getElementById("user-profile-content");
         if (container) {
