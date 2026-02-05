@@ -405,42 +405,24 @@
           const scoreClass =
             scorePercent >= 80 ? "high" : scorePercent >= 50 ? "medium" : "low";
 
-          // 문서 제목
+          // 문서 제목 및 링크
           const title =
             src.document_title || src.document_name || src.title || "Document";
           const driveLink = src.drive_link || src.url || null;
 
-          // 클릭 가능한 링크 생성
-          const titleElement = document.createElement("span");
+          // HTML 문자열로 직접 생성 (GAS 호환성 위해)
+          let titleHtml;
           if (driveLink) {
-            titleElement.className = "source-link";
-            titleElement.style.cursor = "pointer";
-            titleElement.style.color = "#1a73e8";
-            titleElement.style.textDecoration = "underline";
-            titleElement.textContent = title;
-            titleElement.onclick = function () {
-              window.open(driveLink, "_blank");
-            };
+            titleHtml = `<a href="${driveLink}" target="_blank" class="source-link" style="color: #1a73e8; text-decoration: underline; cursor: pointer;">${escapeHtml(title)}</a>`;
           } else {
-            titleElement.textContent = title;
-            titleElement.style.color = "#666";
+            titleHtml = `<span style="color: #666;">${escapeHtml(title)}</span>`;
           }
 
-          // Score badge
-          const scoreBadge = document.createElement("span");
-          scoreBadge.className = `source-score ${scoreClass}`;
-          scoreBadge.textContent = `${scorePercent}%`;
-
-          sourceItem.appendChild(titleElement);
-          sourceItem.appendChild(scoreBadge);
-
-          // Section header (optional)
-          if (src.section_header) {
-            const sectionDiv = document.createElement("div");
-            sectionDiv.className = "source-section";
-            sectionDiv.textContent = `📑 ${src.section_header}`;
-            sourceItem.appendChild(sectionDiv);
-          }
+          sourceItem.innerHTML = `
+            ${titleHtml}
+            <span class="source-score ${scoreClass}">${scorePercent}%</span>
+            ${src.section_header ? `<div class="source-section">📑 ${escapeHtml(src.section_header)}</div>` : ""}
+          `;
 
           sourcesContainer.appendChild(sourceItem);
         });
