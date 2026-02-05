@@ -92,12 +92,9 @@ async def generate_handover(
     except Exception as e:
         logger.error("Failed to queue handover generation", error=str(e))
         # Fallback
-        task_id = f"handover-{request.target_year}-placeholder"
-        return HandoverGenerationResponse(
-            task_id=task_id,
-            status="PENDING",
-            message=f"Handover generation for {request.target_year} queued",
-            estimated_time_minutes=5,
+       raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to queue task: {str(e)}"
         )
 
 

@@ -96,11 +96,9 @@ async def generate_minutes(
     except Exception as e:
         logger.error("Failed to queue minutes generation", error=str(e))
         # Fallback: return placeholder task_id if Celery not available
-        task_id = f"minutes-{request.agenda_doc_id[:8]}-placeholder"
-        return MinutesGenerationResponse(
-            task_id=task_id,
-            status="PENDING",
-            message=f"Smart Minutes generation queued for '{request.meeting_name}'",
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to queue task: {str(e)}"
         )
 
 
