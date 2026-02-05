@@ -147,6 +147,10 @@ async def migrate(dry_run: bool):
         # 4. Update DB
         updated_count = 0
         skipped_count = 0
+        duplicate_count = 0
+
+        # Track used Drive IDs to avoid unique constraint violations
+        used_drive_ids = set()
 
         logger.info("Starting migration", total_docs=len(documents), dry_run=dry_run)
 
@@ -159,6 +163,14 @@ async def migrate(dry_run: bool):
             new_id = combined_drive_map.get(current_path)
 
             if new_id:
+                # Check for duplicate Drive IDs
+                if new_id in used_drive_ids:
+                    logger.warning("Duplicate Drive ID skipped", doc_id=doc.id, drive_id=new_id, path=current_path)
+                    duplicate_count += 1
+                    continue
+
+                used_drive_ids.add(new_id)
+
                 if dry_run:
                     logger.info("[DRY RUN] Would update", doc_id=doc.id, old=doc.drive_id, new=new_id)
                 else:
@@ -171,9 +183,9 @@ async def migrate(dry_run: bool):
 
         if not dry_run:
             await session.commit()
-            logger.info("Migration committed", updated=updated_count, skipped=skipped_count)
+            logger.info("Migration committed", updated=updated_count, skipped=skipped_count, duplicates=duplicate_count)
         else:
-            logger.info("Dry run completed", would_update=updated_count, skipped=skipped_count)
+            logger.info("Dry run completed", would_update=updated_count, skipped=skipped_count, duplicates=duplicate_count)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Migrate Drive IDs")

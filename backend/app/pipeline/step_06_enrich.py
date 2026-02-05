@@ -93,10 +93,8 @@ class MetadataEnrichmentService:
         if event_id:
             document.event_id = event_id
 
-        # Step 5: Set year
-        year = classification.get("year") or hints.get("year")
-        if year:
-            document.year = year
+        # Step 5: Set year (FIXED to 2025 per business requirement)
+        document.year = 2025
 
         # Commit document changes
         await self.db.flush()
