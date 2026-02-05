@@ -7,7 +7,7 @@ RAG data pipeline for processing student council documents.
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
-
+from pathlib import Path
 from celery import shared_task
 import structlog
 from sqlalchemy import select, or_
@@ -100,19 +100,6 @@ def run_full_pipeline(
 ) -> dict[str, Any]:
     """
     Run the complete 7-step RAG pipeline for a single document.
-    
-    Per Ground Truth: Event mapping is NOT determined at pipeline invocation.
-    During Step 6 (Enrichment), the LLM analyzes chunk content and infers
-    the associated Event at the chunk (agenda item) level.
-    
-    Args:
-        file_path: Local path to the file
-        filename: Original filename
-        drive_id: Google Drive file ID
-        folder_path: Full folder path for classification context
-        
-    Returns:
-        Task result with processing status
     """
     async def _process():
         from app.pipeline.step_02_classify import ClassificationService
@@ -126,7 +113,6 @@ def run_full_pipeline(
         async with get_celery_session() as db:
             try:
                 # Check if document already exists
-                # Normalize drive_id by removing 'local:' prefix for comparison
                 normalized_id = drive_id.removeprefix("local:")
                 existing_doc = await db.execute(
                     select(Document).where(
@@ -140,29 +126,15 @@ def run_full_pipeline(
                 existing = existing_doc.scalar_one_or_none()
 
                 if existing:
-                    # If already COMPLETED, skip processing
                     if existing.status == DocumentStatus.COMPLETED:
                         logger.info("Document already completed, skipping", drive_id=drive_id)
-                        return {
-                            "status": "skipped",
-                            "reason": "Document already completed",
-                            "document_id": existing.id,
-                        }
-                    # If FAILED, also skip (needs manual reprocessing)
+                        return {"status": "skipped", "reason": "Document already completed", "document_id": existing.id}
                     elif existing.status == DocumentStatus.FAILED:
-                        logger.info("Document previously failed, skipping", drive_id=drive_id)
-                        return {
-                            "status": "skipped",
-                            "reason": "Document previously failed - use reprocess endpoint",
-                            "document_id": existing.id,
-                        }
-                    # If PENDING or in-progress, continue processing (reuse existing record)
+                        # Retry policy: If explicitly triggered, we might want to retry.
+                        # For now, log and continue processing (overwrite fail state)
+                        logger.info("Retrying failed document", drive_id=drive_id)
                     else:
-                        logger.info(
-                            "Continuing processing of existing document",
-                            drive_id=drive_id,
-                            current_status=existing.status.value,
-                        )
+                        logger.info("Continuing processing", drive_id=drive_id, current_status=existing.status.value)
 
                 # Step 2: Classification
                 classifier = ClassificationService()
@@ -173,7 +145,6 @@ def run_full_pipeline(
 
                 # Create or update document record
                 if existing:
-                    # Reuse existing PENDING document
                     document = existing
                     document.drive_name = filename
                     document.drive_path = folder_path
@@ -185,7 +156,6 @@ def run_full_pipeline(
                     document.status = DocumentStatus.PARSING
                     logger.info("Updated existing document", document_id=document.id)
                 else:
-                    # Create new document
                     document = Document(
                         drive_id=drive_id,
                         drive_name=filename,
@@ -202,7 +172,23 @@ def run_full_pipeline(
                 
                 # Step 3: Parsing
                 parser = ParsingService()
-                with open(file_path, "rb") as f:
+                
+                # [FIX] 경로 절대 경로로 변환 로직 추가
+                base_dir = Path(settings.DATA_RAW_PATH or "/app/data/raw")
+                # file_path가 상대 경로라면 base_dir과 결합
+                clean_path = file_path.lstrip("/") # 혹시 모를 절대경로 슬래시 제거
+                abs_file_path = base_dir / clean_path
+
+                logger.info(f"Reading file from: {abs_file_path}")
+
+                if not abs_file_path.exists():
+                    # Fallback: 혹시 file_path가 이미 절대 경로였을 경우
+                    if Path(file_path).exists():
+                        abs_file_path = Path(file_path)
+                    else:
+                        raise FileNotFoundError(f"File not found: {abs_file_path}")
+
+                with open(abs_file_path, "rb") as f:
                     file_content = f.read()
                 
                 parse_result = await parser.parse_document(
@@ -211,8 +197,6 @@ def run_full_pipeline(
                     caption_images=True,
                 )
                 
-                # BUGFIX: Use markdown_content instead of html_content
-                # Upstage API returns empty html_content, actual content is in markdown_content
                 logger.info(
                     "🔍 [DEBUG] Parsing Result",
                     document_id=document.id,
@@ -223,13 +207,11 @@ def run_full_pipeline(
                     tables_count=len(parse_result.tables),
                 )
                 
-                document.parsed_content = parse_result.markdown_content  # FIXED!
+                document.parsed_content = parse_result.markdown_content
                 document.status = DocumentStatus.PREPROCESSING
                 await db.flush()
                 
                 # Step 4: Preprocessing
-                # BUGFIX: Use markdown_content (with image captions) instead of html_content
-                # markdown_content contains Gemini-generated captions injected in Step 3
                 preprocessor = PreprocessingService()
                 is_meeting = classification.doc_category == DocumentCategory.MEETING_DOCUMENT
                 
@@ -253,8 +235,6 @@ def run_full_pipeline(
                 await db.flush()
                 
                 # Step 6: Metadata Enrichment
-                # Note: event_hints removed per Ground Truth - Event mapping
-                # is determined at chunk level during enrichment, not at invocation
                 enricher = MetadataEnrichmentService(db)
                 await enricher.enrich_document(
                     document=document,
@@ -279,11 +259,6 @@ def run_full_pipeline(
                     "document_id": document.id,
                     "chunks_created": len(db_chunks),
                     "chunks_embedded": embed_result.chunks_embedded,
-                    "classification": {
-                        "category": classification.doc_category.value,
-                        "subtype": classification.meeting_subtype.value if classification.meeting_subtype else None,
-                        "standardized_name": classification.standardized_name,
-                    },
                 }
                 
             except Exception as e:
@@ -434,7 +409,7 @@ def reprocess_document(
         Task result
     """
     async def _reprocess():
-        from pathlib import Path
+        
         from sqlalchemy import select, delete
         from app.pipeline.step_03_parse import ParsingService
         from app.pipeline.step_04_preprocess import PreprocessingService
