@@ -102,59 +102,73 @@ async def backup_db(session: AsyncSession) -> str:
     return str(filename)
 
 async def migrate(dry_run: bool):
-    engine = create_async_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+    engine = create_async_engine(str(settings.DATABASE_URL))
     async_session = async_sessionmaker(engine, expire_on_commit=False)
-    
+
     async with async_session() as session:
         # 1. Backup
         if not dry_run:
             await backup_db(session)
-        
-        # 2. Get Drive Map
-        folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
-        if not folder_id:
-            logger.error("GOOGLE_DRIVE_FOLDER_ID not set")
-            return
-            
-        drive_map = await fetch_drive_map(folder_id)
-        if not drive_map:
-            logger.error("Empty Drive map, aborting")
-            return
-            
-        # 3. Update DB
+
+        # 2. Get documents and extract unique folder IDs from DB paths
         stmt = select(Document).where(Document.drive_id.like("local:%"))
         result = await session.execute(stmt)
         documents = result.scalars().all()
-        
+
+        if not documents:
+            logger.info("No documents with local: prefix found")
+            return
+
+        # Extract unique folder IDs from DB paths
+        # Format: local:FOLDER_ID/path/to/file
+        folder_ids = set()
+        for doc in documents:
+            path = doc.drive_id.replace("local:", "")
+            parts = path.split('/', 1)
+            if len(parts) > 1 and len(parts[0]) > 20:  # Drive IDs are typically 33+ chars
+                folder_ids.add(parts[0])
+
+        logger.info("Found folder IDs in DB", folder_ids=list(folder_ids))
+
+        # 3. Fetch Drive maps for each folder
+        combined_drive_map = {}
+        for folder_id in folder_ids:
+            logger.info("Fetching Drive map for folder", folder_id=folder_id)
+            folder_map = await fetch_drive_map(folder_id)
+            # Prefix paths with folder_id for matching
+            for path, drive_id in folder_map.items():
+                combined_drive_map[f"{folder_id}/{path}"] = drive_id
+            logger.info("Fetched files from folder", folder_id=folder_id, count=len(folder_map))
+
+        if not combined_drive_map:
+            logger.error("Empty Drive map, aborting")
+            return
+
+        # 4. Update DB
         updated_count = 0
         skipped_count = 0
-        
+
         logger.info("Starting migration", total_docs=len(documents), dry_run=dry_run)
-        
+
         for doc in documents:
             # Extract relative path from local:path
-            # drive_id format: local:Folder/File.pdf
+            # drive_id format: local:FOLDER_ID/path/to/file.pdf
             current_path = doc.drive_id.replace("local:", "")
             current_path = normalize_filename(current_path)
-            
-            new_id = drive_map.get(current_path)
-            
+
+            new_id = combined_drive_map.get(current_path)
+
             if new_id:
                 if dry_run:
                     logger.info("[DRY RUN] Would update", doc_id=doc.id, old=doc.drive_id, new=new_id)
                 else:
-                    # Check connection integrity
-                    if doc.drive_path and doc.drive_path != current_path:
-                         # Just a warning, drive_path is the relative path
-                         pass
-
                     doc.drive_id = new_id
                     # IMPORTANT: Do NOT change drive_path
                 updated_count += 1
             else:
                 logger.warning("No match found for document", doc_id=doc.id, path=current_path)
                 skipped_count += 1
-        
+
         if not dry_run:
             await session.commit()
             logger.info("Migration committed", updated=updated_count, skipped=skipped_count)
