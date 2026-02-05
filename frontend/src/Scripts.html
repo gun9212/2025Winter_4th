@@ -572,6 +572,105 @@
 
     // 권한에 따라 인수인계서 섹션 표시/숨김
     checkHandoverAccess();
+    
+    // v2.0: RAG 문서 목록 로드
+    loadRagDocuments();
+    
+    // v2.0: RAG 문서 새로고침 버튼
+    document
+      .getElementById("refresh-rag-docs-btn")
+      ?.addEventListener("click", function (e) {
+        e.preventDefault();
+        loadRagDocuments();
+      });
+    
+    // v2.0: Admin 탭 이동 버튼
+    document
+      .getElementById("go-to-admin-btn")
+      ?.addEventListener("click", function (e) {
+        e.preventDefault();
+        activateTab("admin");
+      });
+  }
+  
+  /**
+   * RAG 학습 완료 문서 목록 로드 (v2.0)
+   * - COMPLETED 상태의 문서만 조회
+   * - 최신순 정렬
+   * - 날짜 표시로 식별력 강화
+   */
+  function loadRagDocuments() {
+    const select = document.getElementById('source-document-id');
+    const info = document.getElementById('source-doc-info');
+    const guide = document.getElementById('rag-learning-guide');
+    
+    if (!select) {
+      console.warn('[loadRagDocuments] select element not found');
+      return;
+    }
+    
+    // 로딩 표시
+    select.innerHTML = '<option value="">문서 목록 로딩 중...</option>';
+    select.disabled = true;
+    if (info) info.textContent = '';
+    if (guide) guide.classList.add('hidden');
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        select.disabled = false;
+        
+        if (!result.success) {
+          select.innerHTML = '<option value="">⚠️ 목록 조회 실패</option>';
+          if (info) info.textContent = result.error || '알 수 없는 오류';
+          console.error('[loadRagDocuments] API error:', result.error);
+          return;
+        }
+        
+        let documents = result.data?.documents || [];
+        
+        if (documents.length === 0) {
+          select.innerHTML = '<option value="">RAG 학습된 문서가 없습니다</option>';
+          if (guide) guide.classList.remove('hidden');
+          return;
+        }
+        
+        // 최신순 정렬 (updated_at 기준)
+        documents.sort(function(a, b) {
+          return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+        });
+        
+        // 최근 50개만 표시 (UX)
+        const recentDocs = documents.slice(0, 50);
+        
+        // 옵션 생성
+        let options = '<option value="">-- 속기록 문서 선택 --</option>';
+        recentDocs.forEach(function(doc) {
+          // 문서 유형 아이콘
+          const icon = doc.doc_type === 'transcript' ? '📝' : 
+                       doc.doc_type === 'agenda' ? '📋' : '📄';
+          // 날짜 포맷 (MM/DD)
+          let dateStr = '';
+          if (doc.updated_at) {
+            const d = new Date(doc.updated_at);
+            dateStr = (d.getMonth() + 1) + '/' + d.getDate();
+          }
+          const displayName = doc.file_name || doc.title || 'Untitled';
+          const optionText = icon + ' ' + displayName + (dateStr ? ' (' + dateStr + ')' : '');
+          options += '<option value="' + doc.id + '" data-name="' + displayName + '">' + optionText + '</option>';
+        });
+        
+        select.innerHTML = options;
+        if (guide) guide.classList.add('hidden');
+        
+        console.log('[loadRagDocuments] Loaded', recentDocs.length, 'documents');
+      })
+      .withFailureHandler(function(error) {
+        select.disabled = false;
+        select.innerHTML = '<option value="">⚠️ 서버 연결 실패</option>';
+        if (info) info.textContent = '서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.';
+        console.error('[loadRagDocuments] Server error:', error);
+      })
+      .apiGetRagDocuments(0, 100);
   }
 
   /**
@@ -634,9 +733,14 @@
       .extractPlaceholders(templateId);
   }
 
+  /**
+   * 결과지 생성 (v2.0)
+   * - source_document_id 사용 (RAG 학습 완료 문서)
+   * - transcript_doc_id/text deprecated
+   */
   function generateMinutes() {
     const agendaDocId = document.getElementById("agenda-doc-id").value;
-    const transcriptDocId = document.getElementById("transcript-doc-id").value;
+    const sourceDocumentId = document.getElementById("source-document-id").value;  // v2.0
     const templateDocId = document.getElementById("template-doc-id").value;
     const meetingName = document.getElementById("meeting-name").value;
     const meetingDate = document.getElementById("meeting-date").value;
@@ -647,9 +751,12 @@
       showToast("안건지를 선택해주세요.", "warning");
       return;
     }
-    // 속기록 필수 검사
-    if (!transcriptDocId || transcriptDocId.trim() === "") {
-      showToast("속기록 문서를 선택해주세요. (필수)", "warning");
+    // v2.0: source_document_id 필수 검사
+    if (!sourceDocumentId || sourceDocumentId.trim() === "") {
+      showToast("속기록 문서를 선택해주세요.\n\nRAG 자료학습 완료된 문서만 사용 가능합니다.", "warning");
+      // RAG 학습 안내 표시
+      const guide = document.getElementById('rag-learning-guide');
+      if (guide) guide.classList.remove('hidden');
       return;
     }
     if (!meetingName) {
@@ -680,7 +787,13 @@
     updateProgressStep("minutes", "parse", "active");
     updateProgress("minutes", 5, "문서 파싱 중...");
 
-    // API 호출
+    console.log('[generateMinutes] v2.0 Request:', {
+      agendaDocId: agendaDocId,
+      sourceDocumentId: sourceDocumentId,
+      meetingName: meetingName
+    });
+
+    // v2.0 API 호출
     google.script.run
       .withSuccessHandler(function (result) {
         if (result.success) {
@@ -692,18 +805,27 @@
           stopElapsedTimer("minutes");
           setButtonLoading(btn, false);
           progressEl.classList.add("hidden");
-          showToast("요청 실패: " + result.error, "error");
+          
+          // v2.0: RAG 관련 에러 특별 처리
+          const errorMsg = result.error || '알 수 없는 오류';
+          if (errorMsg.includes('RAG') || errorMsg.includes('자료학습') || errorMsg.includes('preprocessed')) {
+            showToast("⚠️ " + errorMsg, "warning", 5000);
+            const guide = document.getElementById('rag-learning-guide');
+            if (guide) guide.classList.remove('hidden');
+          } else {
+            showToast("요청 실패: " + errorMsg, "error");
+          }
         }
       })
       .withFailureHandler(function (error) {
         stopElapsedTimer("minutes");
         setButtonLoading(btn, false);
         progressEl.classList.add("hidden");
-        showToast("오류: " + error.message, "error");
+        showToast("서버 오류: " + (error.message || error), "error");
       })
       .apiGenerateMinutes({
         agendaDocId: agendaDocId,
-        transcriptDocId: transcriptDocId || null,
+        sourceDocumentId: sourceDocumentId,  // v2.0 필수
         templateDocId: templateDocId || null,
         meetingName: meetingName,
         meetingDate: meetingDate,

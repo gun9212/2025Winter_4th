@@ -471,16 +471,54 @@
               <p id="agenda-doc-name" class="text-xs text-gray-500 mt-1 truncate"></p>
             </div>
             
-            <!-- 속기록 선택 -->
+            <!-- 속기록 선택 (v2.0: RAG 학습 완료 문서에서 선택) -->
             <div class="mb-4">
-              <label class="block text-xs text-google-gray mb-1">속기록 *</label>
+              <label class="block text-xs text-google-gray mb-1">
+                속기록 * 
+                <span class="text-blue-500 font-normal text-[10px]">(RAG 학습 완료 필수)</span>
+              </label>
+              
+              <!-- RAG 문서 Selectbox -->
+              <div class="flex gap-2">
+                <select 
+                  id="source-document-id" 
+                  name="source-document-id"
+                  class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
+                >
+                  <option value="">로딩 중...</option>
+                </select>
+                <button 
+                  id="refresh-rag-docs-btn"
+                  class="bg-white border border-gray-300 rounded px-3 py-2 hover:bg-gray-50 transition-colors text-sm"
+                  title="문서 목록 새로고침"
+                >
+                  🔄
+                </button>
+              </div>
+              
+              <!-- 선택된 문서 정보 -->
+              <p id="source-doc-info" class="text-xs text-gray-500 mt-1 truncate"></p>
+              
+              <!-- RAG 학습 안내 (문서 없을 때 표시) -->
+              <div id="rag-learning-guide" class="hidden mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                <p class="text-yellow-700">
+                  ⚠️ 문서가 목록에 없으면 
+                  <button id="go-to-admin-btn" class="text-blue-600 underline hover:text-blue-800">Admin 탭</button>
+                  에서 RAG 자료학습을 먼저 진행해주세요.
+                </p>
+              </div>
+            </div>
+            
+            <!-- 기존 Picker 방식 (레거시 - 숨김 처리) -->
+            <div class="mb-4 hidden" id="legacy-transcript-picker">
+              <label class="block text-xs text-google-gray mb-1">속기록 (레거시)</label>
               <div class="flex gap-2">
                 <input 
                   type="text" 
                   id="transcript-doc-id" 
                   name="transcript-doc-id"
                   class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50"
-                  placeholder="Google Docs ID (필수)"
+                  placeholder="Google Docs ID"
                   readonly
                 >
                 <button 

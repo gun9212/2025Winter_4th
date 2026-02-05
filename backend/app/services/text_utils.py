@@ -27,22 +27,100 @@ class DocumentSection:
     
     @property
     def agenda_type(self) -> str | None:
-        """Extract agenda type from header (보고안건, 논의안건, 기타안건)."""
-        if "보고" in self.title:
-            return "report"
-        elif "논의" in self.title:
-            return "discuss"
-        elif "의결" in self.title:
-            return "decision"
-        elif "기타" in self.title:
-            return "other"
+        """
+        Extract agenda type from header.
+        
+        Supports two patterns:
+        1. H1 headers: "# 보고안건", "# 논의안건"
+        2. H2 headers: "## 보고안건 1. 제목", "## 논의안건 2. 컴씨"
+        
+        Returns:
+            "report", "discuss", "decision", "other", or None
+        """
+        title = self.title
+        
+        # Pattern 1: H1 style - "# 보고안건" (agenda category header)
+        if self.header_level == 1:
+            if "보고" in title:
+                return "report"
+            elif "논의" in title:
+                return "discuss"
+            elif "의결" in title:
+                return "decision"
+            elif "기타" in title:
+                return "other"
+        
+        # Pattern 2: H2 style - "## 보고안건 1. 제목" (individual agenda item)
+        if self.header_level == 2:
+            if "보고안건" in title or "보고 안건" in title:
+                return "report"
+            elif "논의안건" in title or "논의 안건" in title:
+                return "discuss"
+            elif "의결안건" in title or "의결 안건" in title:
+                return "decision"
+            elif "기타안건" in title or "기타 안건" in title:
+                return "other"
+            # Fallback: check for type keyword at start
+            elif title.startswith("보고"):
+                return "report"
+            elif title.startswith("논의"):
+                return "discuss"
+        
         return None
     
     @property
     def agenda_number(self) -> int | None:
-        """Extract agenda item number if present (e.g., '논의안건 2' -> 2)."""
-        match = re.search(r'(\d+)', self.title)
-        return int(match.group(1)) if match else None
+        """
+        Extract agenda item number if present.
+        
+        Supports patterns:
+        - "논의안건 2. 제목" -> 2
+        - "보고안건 1) 제목" -> 1
+        - "논의 3. 컴씨" -> 3
+        - "1. 제목" -> 1
+        
+        Only extracts from H2 headers (individual agenda items).
+        
+        Returns:
+            Agenda number or None
+        """
+        if self.header_level != 2:
+            return None
+        
+        # Pattern 1: "안건 N." or "안건N."
+        match = re.search(r'안건\s*(\d+)[.)\s]', self.title)
+        if match:
+            return int(match.group(1))
+        
+        # Pattern 2: Type followed by number - "보고 1." "논의 2."
+        match = re.search(r'(?:보고|논의|의결|기타)\s*(\d+)[.)\s]', self.title)
+        if match:
+            return int(match.group(1))
+        
+        # Pattern 3: Number at start - "1. 제목"
+        match = re.search(r'^(\d+)[.)\s]', self.title.strip())
+        if match:
+            return int(match.group(1))
+        
+        return None
+    
+    @property
+    def placeholder_key(self) -> str | None:
+        """
+        Generate placeholder key for this section.
+        
+        Returns:
+            Placeholder like "{report_1_result}" or None
+        """
+        agenda_type = self.agenda_type
+        agenda_num = self.agenda_number
+        
+        if agenda_type and agenda_num:
+            return f"{{{agenda_type}_{agenda_num}_result}}"
+        elif agenda_type:
+            # Fallback for unnumbered items
+            return f"{{{agenda_type}_result}}"
+        return None
 
 
 def split_by_headers(
@@ -363,3 +441,134 @@ def build_placeholder_map(
 def basic_cleanup(content: str) -> str:
     """Alias for normalize_whitespace for backward compatibility."""
     return normalize_whitespace(content)
+
+
+def clean_markdown(text: str) -> str:
+    """
+    Clean markdown formatting from text for Google Docs insertion.
+    
+    Removes common markdown syntax that would appear as plain text
+    in Google Docs:
+    - Bold (**text** or __text__)
+    - Italic (*text* or _text_)
+    - Headers (# ## ###)
+    - Bullet points (- or *)
+    - Numbered lists
+    - Code blocks (``` and ``)
+    - Links [text](url)
+    
+    Args:
+        text: Text potentially containing markdown
+        
+    Returns:
+        Cleaned plain text suitable for Google Docs
+        
+    Example:
+        >>> clean_markdown("**결정사항**: 오크밸리로 선정")
+        '결정사항: 오크밸리로 선정'
+    """
+    if not text:
+        return text
+    
+    # Preserve original for debugging
+    original = text
+    
+    # Remove code blocks first (```...```)
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    
+    # Remove inline code (`code`)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    
+    # Remove bold (**text** or __text__)
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'__([^_]+)__', r'\1', text)
+    
+    # Remove italic (*text* or _text_) - careful not to match **
+    text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'\1', text)
+    text = re.sub(r'(?<!_)_([^_]+)_(?!_)', r'\1', text)
+    
+    # Remove headers (# ## ###) at line start
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # Convert bullet points to plain text with bullet character
+    text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
+    
+    # Keep numbered lists but clean formatting
+    text = re.sub(r'^(\d+)\.\s+', r'\1. ', text, flags=re.MULTILINE)
+    
+    # Remove links [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # Remove horizontal rules
+    text = re.sub(r'^[\-\*_]{3,}$', '', text, flags=re.MULTILINE)
+    
+    # Clean up excessive whitespace
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = text.strip()
+    
+    if text != original:
+        logger.debug(
+            "Cleaned markdown",
+            original_len=len(original),
+            cleaned_len=len(text),
+        )
+    
+    return text
+
+
+def clean_summary_for_docs(summary_result: dict) -> str:
+    """
+    Extract and clean summary from Gemini response for Google Docs.
+    
+    Takes the structured Gemini response and produces a clean text
+    string suitable for insertion into Google Docs.
+    
+    Args:
+        summary_result: Dict from GeminiService.summarize_agenda_section()
+                       containing 'summary', 'decisions', 'action_items', etc.
+        
+    Returns:
+        Formatted plain text for Google Docs
+        
+    Example:
+        >>> result = {"summary": "**오크밸리**로 결정", "decisions": ["장소 확정"]}
+        >>> clean_summary_for_docs(result)
+        '오크밸리로 결정\n\n[결정사항]\n• 장소 확정'
+    """
+    parts = []
+    
+    # Main summary
+    summary = summary_result.get("summary", "")
+    if summary:
+        parts.append(clean_markdown(summary))
+    
+    # Decisions
+    decisions = summary_result.get("decisions", [])
+    if decisions:
+        parts.append("\n[결정사항]")
+        for decision in decisions:
+            parts.append(f"• {clean_markdown(decision)}")
+    
+    # Action items
+    action_items = summary_result.get("action_items", [])
+    if action_items:
+        parts.append("\n[할 일]")
+        for item in action_items:
+            task = item.get("task", "")
+            assignee = item.get("assignee", "")
+            deadline = item.get("deadline", "")
+            
+            item_text = clean_markdown(task)
+            if assignee:
+                item_text += f" (담당: {assignee})"
+            if deadline:
+                item_text += f" (기한: {deadline})"
+            parts.append(f"• {item_text}")
+    
+    # Discussion progress (if no decisions)
+    if not decisions and summary_result.get("discussion_progress"):
+        progress = summary_result.get("discussion_progress", "")
+        parts.append(f"\n[논의 현황] {clean_markdown(progress)}")
+    
+    return "\n".join(parts)
+

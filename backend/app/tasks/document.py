@@ -138,12 +138,12 @@ def process_minutes(
 
         # Replace placeholders
         replacements = {
-            "{{요약}}": analysis.get("summary", ""),
-            "{{결정사항}}": "\n".join(
+            "{요약}": analysis.get("summary", ""),
+            "{결정사항}": "\n".join(
                 f"- {d['topic']}: {d['decision']}"
                 for d in analysis.get("decisions", [])
             ),
-            "{{액션아이템}}": "\n".join(
+            "{액션아이템}": "\n".join(
                 f"- {a['task']} (담당: {a.get('assignee', '미정')})"
                 for a in analysis.get("action_items", [])
             ),
