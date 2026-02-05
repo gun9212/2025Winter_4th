@@ -53,29 +53,43 @@ class AgendaSummary(BaseModel):
 class MinutesGenerationRequest(BaseModel):
     """Request for Smart Minutes generation (결과지 자동 생성).
     
-    Supports:
-    1. DB Document ID (source_document_id) - PREFERRED: Uses preprocessed_content from RAG pipeline
-    2. Google Doc ID (transcript_doc_id) - DEPRECATED: Server fetches via Docs API
-    3. Direct text (transcript_text) - Fallback for flexibility
+    v2.0 Architecture:
+    - Uses DB preprocessed_content (from RAG pipeline) instead of Google Docs API
+    - Requires both agenda and transcript to be in DB (COMPLETED status)
+    - Dynamically injects placeholders into result template
+    
+    Required:
+    - agenda_doc_id: Google Docs ID of agenda (안건지) - also used as template
+    - source_document_id: DB Document ID of transcript (속기록) - MUST be COMPLETED
+    
+    Deprecated (will be removed in v3.0):
+    - transcript_doc_id: Replaced by source_document_id
+    - transcript_text: Replaced by source_document_id
     """
     
     agenda_doc_id: str = Field(
         ...,
-        description="Google Docs ID of the agenda template (안건지)",
+        description="Google Docs ID of the agenda template (안건지). Will be copied to create result document.",
         examples=["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
     )
-    source_document_id: int | None = Field(
+    agenda_document_id: int | None = Field(
         default=None,
-        description="DB Document ID (속기록). PREFERRED: Uses preprocessed_content from RAG pipeline.",
+        description="DB Document ID of the agenda (안건지). If provided, uses preprocessed_content for placeholder generation.",
     )
+    source_document_id: int = Field(
+        ...,
+        description="DB Document ID of transcript (속기록). REQUIRED: Must be COMPLETED status with preprocessed_content.",
+    )
+    # DEPRECATED fields - kept for backward compatibility
     transcript_doc_id: str | None = Field(
         default=None,
-        description="[DEPRECATED] Google Docs ID of the transcript. Use source_document_id instead.",
+        description="[DEPRECATED v2.0] Use source_document_id instead. Will be removed in v3.0.",
+        deprecated=True,
     )
     transcript_text: str | None = Field(
         default=None,
-        description="Direct transcript text. Fallback if neither source_document_id nor transcript_doc_id provided.",
-        min_length=10,
+        description="[DEPRECATED v2.0] Use source_document_id instead. Will be removed in v3.0.",
+        deprecated=True,
     )
     template_doc_id: str | None = Field(
         default=None,
@@ -96,7 +110,7 @@ class MinutesGenerationRequest(BaseModel):
     )
     output_doc_id: str | None = Field(
         default=None,
-        description="Pre-created Google Docs ID for result. If provided, skips document creation (recommended to avoid quota issues).",
+        description="Pre-created Google Docs ID for result. If provided, uses this instead of creating new doc.",
     )
     user_level: int = Field(
         default=2,
@@ -109,16 +123,6 @@ class MinutesGenerationRequest(BaseModel):
         description="User email to share the output document with (required for Service Account mode)",
         examples=["user@example.com"],
     )
-    
-    @field_validator("transcript_text")
-    @classmethod
-    def validate_transcript_source(cls, v, info):
-        """Ensure at least one transcript source is provided."""
-        source_doc_id = info.data.get("source_document_id")
-        transcript_doc_id = info.data.get("transcript_doc_id")
-        if not v and not transcript_doc_id and not source_doc_id:
-            raise ValueError("Either source_document_id, transcript_doc_id, or transcript_text must be provided")
-        return v
 
 
 class MinutesGenerationResponse(BaseModel):

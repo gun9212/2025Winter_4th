@@ -22,29 +22,35 @@ router = APIRouter()
     "/generate",
     response_model=MinutesGenerationResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate result document (Smart Minutes)",
+    summary="Generate result document (Smart Minutes v2.0)",
     description="""
     Generate a result document from agenda template and meeting transcript.
     
-    **Smart Minutes Feature:**
-    Automatically converts meeting transcript into a formatted result document
-    following the agenda structure.
+    **v2.0 Smart Minutes Architecture:**
+    Uses DB preprocessed_content from RAG pipeline instead of Google Docs API.
     
-    **Input Options (choose one for transcript):**
-    1. `transcript_doc_id`: Google Docs ID - server fetches content (recommended)
-    2. `transcript_text`: Direct text input - for flexibility
+    **Required Input:**
+    1. `agenda_doc_id`: Google Docs ID of agenda template (안건지)
+    2. `source_document_id`: DB Document ID of transcript (속기록) - MUST be COMPLETED
     
-    **Processing (Async via Celery):**
-    1. Load transcript from Google Docs (if doc_id provided)
-    2. Split transcript by agenda headers (# 보고안건, ## 논의안건 1. etc.)
-    3. Summarize each section with Gemini (decisions/progress)
-    4. Copy agenda template to create result document
-    5. Replace placeholders ({{report_1_result}}, {{discuss_1_result}}) with summaries
+    **Optional Input:**
+    - `agenda_document_id`: DB Document ID of agenda for preprocessed_content
+    - `output_doc_id`: Pre-created result document ID
+    
+    **Processing (Async via Celery - 4 Phases):**
+    - Phase 0: DB Access + RAG Validation
+    - Phase 1: Template Preparation (Placeholder Injection)
+    - Phase 2: Summarization with Gemini
+    - Phase 3: Replacement + Fallback
     
     **Placeholder Convention:**
-    - `{{report_N_result}}` for 보고안건 N
-    - `{{discuss_N_result}}` for 논의안건 N
-    - `{{other_N_result}}` for 기타안건 N
+    - `{report_N_result}` for 보고안건 N
+    - `{discuss_N_result}` for 논의안건 N
+    - `{other_N_result}` for 기타안건 N
+    
+    **Error Handling:**
+    - If document not found: "RAG 자료학습을 먼저 진행해주세요!"
+    - If placeholder not found: Appends summary to document end (Fallback)
     """,
 )
 async def generate_minutes(
@@ -60,36 +66,31 @@ async def generate_minutes(
     try:
         from app.tasks.features import generate_minutes as generate_minutes_task
         
-        # Determine transcript source
-        transcript_source = (
-            f"doc:{request.transcript_doc_id}" 
-            if request.transcript_doc_id 
-            else "text"
-        )
-        
         logger.info(
-            "Queueing Smart Minutes generation",
+            "Queueing Smart Minutes v2.0 generation",
             agenda_doc_id=request.agenda_doc_id[:8],
-            transcript_source=transcript_source,
+            source_document_id=request.source_document_id,
+            agenda_document_id=request.agenda_document_id,
             meeting_name=request.meeting_name,
         )
         
-        # Queue Celery task
+        # Queue Celery task with v2.0 parameters
         task = generate_minutes_task.delay(
             agenda_doc_id=request.agenda_doc_id,
-            transcript_doc_id=request.transcript_doc_id,
-            transcript_text=request.transcript_text,
+            source_document_id=request.source_document_id,
+            agenda_document_id=request.agenda_document_id,
             template_doc_id=request.template_doc_id,
             meeting_name=request.meeting_name,
             meeting_date=request.meeting_date.isoformat(),
             output_folder_id=request.output_folder_id,
+            output_doc_id=request.output_doc_id,
             user_email=request.user_email,
         )
         
         return MinutesGenerationResponse(
             task_id=task.id,
             status="PENDING",
-            message=f"Smart Minutes generation started for '{request.meeting_name}'",
+            message=f"Smart Minutes v2.0 generation started for '{request.meeting_name}'",
         )
         
     except Exception as e:

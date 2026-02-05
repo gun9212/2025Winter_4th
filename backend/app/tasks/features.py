@@ -39,35 +39,50 @@ def run_async(coro):
 def generate_minutes(
     self,
     agenda_doc_id: str,
-    source_document_id: int | None = None,  # NEW: DB document ID (preferred)
-    transcript_doc_id: str | None = None,   # DEPRECATED: Google Docs ID
-    transcript_text: str | None = None,
+    source_document_id: int,  # REQUIRED: DB Document ID of transcript
+    agenda_document_id: int | None = None,  # Optional: DB Document ID of agenda
+    transcript_doc_id: str | None = None,   # DEPRECATED
+    transcript_text: str | None = None,     # DEPRECATED
     template_doc_id: str | None = None,
     meeting_name: str = "Untitled Meeting",
     meeting_date: str | None = None,
     output_folder_id: str | None = None,
+    output_doc_id: str | None = None,  # Pre-created result doc ID
     user_email: str | None = None,
 ) -> dict[str, Any]:
     """
     Generate a result document from agenda template and meeting transcript.
     
-    Smart Minutes Feature Implementation:
-    1. Load transcript from DB (preferred) or Google Docs or use text
-    2. Split transcript by agenda headers using text_utils
-    3. Summarize each section with Gemini
-    4. Copy agenda template to create result document
-    5. Replace placeholders with summaries
+    v2.0 Smart Minutes Architecture (4-Phase):
+    
+    Phase 0: DB Access + Validation
+        - Fetch transcript preprocessed_content from DB
+        - Validate COMPLETED status
+        
+    Phase 1: Template Preparation
+        - Copy agenda to create result document
+        - Inject placeholders ({report_1_result}, {discuss_1_result}, etc.)
+        
+    Phase 2: Summarization
+        - Split transcript by headers
+        - Summarize each section with Gemini
+        
+    Phase 3: Replacement + Fallback
+        - Replace placeholders with summaries
+        - Append to document end if placeholder not found
     
     Args:
         agenda_doc_id: Google Docs ID of agenda template (안건지)
-        source_document_id: DB Document ID (속기록) - PREFERRED
-        transcript_doc_id: Google Docs ID of transcript - DEPRECATED
-        transcript_text: Direct transcript text (fallback)
+        source_document_id: DB Document ID of transcript (속기록) - REQUIRED
+        agenda_document_id: DB Document ID of agenda - for preprocessed_content
+        transcript_doc_id: DEPRECATED - use source_document_id
+        transcript_text: DEPRECATED - use source_document_id
         template_doc_id: Optional template for result (if None, copies agenda)
         meeting_name: Meeting name for output document
         meeting_date: Meeting date (ISO format)
         output_folder_id: Google Drive folder ID for output
-        user_email: Email to share the result document with (for Service Account mode)
+        output_doc_id: Pre-created Google Docs ID for result
+        user_email: Email to share the result document with
         
     Returns:
         Task result with output_doc_id and status
@@ -77,85 +92,178 @@ def generate_minutes(
         
         from app.services.google.docs import GoogleDocsService
         from app.services.ai.gemini import GeminiService
-        from app.services.text_utils import split_by_headers, build_placeholder_map
+        from app.services.text_utils import split_by_headers, clean_summary_for_docs
+        from sqlalchemy import select
+        from app.models.document import Document, DocumentStatus
         
-        # Use OAuth credentials - files created in authenticated user's Drive
-        # Requires oauth_client.json and oauth_token.json in credentials folder
         docs_service = GoogleDocsService(use_oauth=True)
         gemini = GeminiService()
         
         logger.info(
-            "Starting Smart Minutes generation",
+            "🚀 [v2.0] Starting Smart Minutes generation",
             meeting_name=meeting_name,
-            agenda_doc_id=agenda_doc_id[:8],
+            agenda_doc_id=agenda_doc_id[:8] if agenda_doc_id else None,
             source_document_id=source_document_id,
-            has_transcript_doc=bool(transcript_doc_id),
+            agenda_document_id=agenda_document_id,
             user_email=user_email,
         )
         
-        # Step 1: Load transcript content
-        self.update_state(state="PROGRESS", meta={"progress": 10, "step": "Loading transcript"})
+        # =====================================================================
+        # Phase 0: DB Access + RAG Validation
+        # =====================================================================
+        self.update_state(state="PROGRESS", meta={"progress": 10, "step": "Phase 0: DB 조회"})
         
-        if source_document_id:
-            # NEW: DB 조회 방식 (PREFERRED)
-            from sqlalchemy import select
-            from app.models.document import Document, DocumentStatus
-            
-            async def _fetch_from_db():
-                async with async_session_factory() as db:
-                    result = await db.execute(
-                        select(Document).where(Document.id == source_document_id)
+        async def _fetch_document_from_db(doc_id: int, doc_type: str = "transcript") -> tuple[str, str]:
+            """Fetch preprocessed_content from DB with RAG validation."""
+            async with async_session_factory() as db:
+                result = await db.execute(
+                    select(Document).where(Document.id == doc_id)
+                )
+                doc = result.scalar_one_or_none()
+                
+                if not doc:
+                    raise ValueError(
+                        f"📛 문서 ID {doc_id}를 찾을 수 없습니다. "
+                        f"RAG 자료학습을 먼저 진행해주세요!"
                     )
-                    doc = result.scalar_one_or_none()
-                    if not doc:
-                        raise ValueError(f"Document {source_document_id} not found in database")
-                    if doc.status != DocumentStatus.COMPLETED:
-                        raise ValueError(f"Document {source_document_id} is not COMPLETED (status: {doc.status})")
-                    if not doc.preprocessed_content:
-                        raise ValueError(f"Document {source_document_id} has no preprocessed_content")
-                    return doc.preprocessed_content
-            
-            transcript_content = run_async(_fetch_from_db())
-            logger.info("Loaded transcript from DB", document_id=source_document_id, length=len(transcript_content))
-        elif transcript_doc_id:
-            transcript_content = docs_service.get_document_text(transcript_doc_id)
-            logger.info("Loaded transcript from Google Docs (deprecated)", length=len(transcript_content))
-        elif transcript_text:
-            transcript_content = transcript_text
-            logger.info("Using provided transcript text", length=len(transcript_content))
+                if doc.status != DocumentStatus.COMPLETED:
+                    raise ValueError(
+                        f"📛 문서 ID {doc_id}가 아직 처리 중입니다 (상태: {doc.status}). "
+                        f"RAG 파이프라인이 완료될 때까지 기다려주세요!"
+                    )
+                if not doc.preprocessed_content:
+                    raise ValueError(
+                        f"📛 문서 ID {doc_id}의 전처리 내용이 비어있습니다. "
+                        f"RAG 파이프라인을 확인해주세요!"
+                    )
+                    
+                logger.info(
+                    f"✅ Fetched {doc_type} from DB",
+                    document_id=doc_id,
+                    drive_name=doc.drive_name,
+                    content_length=len(doc.preprocessed_content),
+                )
+                return doc.preprocessed_content, doc.drive_id or ""
+        
+        # Fetch transcript (REQUIRED)
+        transcript_content, transcript_drive_id = run_async(
+            _fetch_document_from_db(source_document_id, "transcript")
+        )
+        
+        # Fetch agenda preprocessed_content if agenda_document_id provided
+        agenda_preprocessed = None
+        if agenda_document_id:
+            agenda_preprocessed, _ = run_async(
+                _fetch_document_from_db(agenda_document_id, "agenda")
+            )
+        
+        # =====================================================================
+        # Phase 1: Template Preparation (Placeholder Injection)
+        # =====================================================================
+        self.update_state(state="PROGRESS", meta={"progress": 20, "step": "Phase 1: 결과지 생성"})
+        
+        # Step 1.1: Create result document (copy agenda or use provided output_doc_id)
+        source_doc_id = template_doc_id or agenda_doc_id
+        result_doc_title = f"[결과지] {meeting_name}"
+        
+        if output_doc_id:
+            # Use pre-created document
+            new_doc_id = output_doc_id
+            logger.info("Using pre-created result document", doc_id=new_doc_id)
         else:
-            raise ValueError("Either source_document_id, transcript_doc_id, or transcript_text must be provided")
+            # Copy agenda to create new result document
+            new_doc = docs_service.copy_document(
+                source_doc_id,
+                result_doc_title,
+                parent_folder_id=output_folder_id,
+                share_with_email=user_email
+            )
+            new_doc_id = new_doc.get("id")
+            logger.info("Created result document", doc_id=new_doc_id, folder_id=output_folder_id)
         
-        # Step 2: Split transcript by headers
-        self.update_state(state="PROGRESS", meta={"progress": 20, "step": "Splitting by agenda"})
+        # Step 1.2: Parse agenda to extract placeholder positions
+        self.update_state(state="PROGRESS", meta={"progress": 25, "step": "Phase 1: Placeholder 분석"})
         
-        sections = split_by_headers(transcript_content, max_level=2)
-        logger.info("Split transcript into sections", section_count=len(sections))
+        # Use agenda preprocessed_content if available, otherwise get from Docs API
+        if agenda_preprocessed:
+            agenda_sections = split_by_headers(agenda_preprocessed, max_level=2)
+        else:
+            # Fallback: Get agenda text from Google Docs API
+            agenda_text = docs_service.get_document_text(agenda_doc_id)
+            agenda_sections = split_by_headers(agenda_text, max_level=2)
         
-        # Step 3: Summarize each section with Gemini
-        self.update_state(state="PROGRESS", meta={"progress": 30, "step": "Analyzing sections"})
+        # Step 1.3: Inject placeholders into result document
+        placeholders_to_inject = []
+        for section in agenda_sections:
+            if section.header_level == 2 and section.placeholder_key:
+                placeholders_to_inject.append({
+                    "title": section.title,
+                    "placeholder": section.placeholder_key,
+                })
         
+        logger.info(
+            "Analyzed agenda structure",
+            total_sections=len(agenda_sections),
+            h2_sections=len(placeholders_to_inject),
+            placeholders=[p["placeholder"] for p in placeholders_to_inject],
+        )
+        
+        # Inject placeholders after each section title
+        for item in placeholders_to_inject:
+            result = docs_service.find_text_and_insert_after(
+                new_doc_id,
+                item["title"],
+                f"\n{item['placeholder']}\n"
+            )
+            if result:
+                logger.debug(f"Injected placeholder after '{item['title']}'")
+            else:
+                logger.warning(f"Could not find title in doc: '{item['title']}'")
+        
+        # =====================================================================
+        # Phase 2: Summarization
+        # =====================================================================
+        self.update_state(state="PROGRESS", meta={"progress": 35, "step": "Phase 2: 속기록 분석"})
+        
+        # Split transcript by headers
+        transcript_sections = split_by_headers(transcript_content, max_level=2)
+        
+        logger.info(
+            "Split transcript into sections",
+            section_count=len(transcript_sections),
+            h2_count=len([s for s in transcript_sections if s.header_level == 2]),
+        )
+        
+        # Summarize each H2 section
         summaries = []
         agenda_summaries = []
-        total_sections = len(sections)
+        h2_sections = [s for s in transcript_sections if s.header_level == 2]
+        total_h2 = len(h2_sections)
         
-        for i, section in enumerate(sections):
-            progress = 30 + int((i / total_sections) * 40)  # 30-70%
+        for i, section in enumerate(h2_sections):
+            progress = 35 + int((i / max(total_h2, 1)) * 35)  # 35-70%
             self.update_state(
-                state="PROGRESS", 
-                meta={"progress": progress, "step": f"Summarizing section {i+1}/{total_sections}"}
+                state="PROGRESS",
+                meta={"progress": progress, "step": f"Phase 2: 요약 중 ({i+1}/{total_h2})"}
             )
             
-            # Get agenda type and summarize
             agenda_type = section.agenda_type or "other"
+            placeholder_key = section.placeholder_key
+            
             result = gemini.summarize_agenda_section(
                 section_content=section.content,
                 section_title=section.title,
                 agenda_type=agenda_type,
             )
             
-            summary_text = result.get("summary", "요약 없음")
-            summaries.append(summary_text)
+            # Apply markdown cleaning for Google Docs insertion
+            summary_text = clean_summary_for_docs(result)
+            
+            summaries.append({
+                "placeholder_key": placeholder_key,
+                "title": section.title,
+                "summary": summary_text,
+            })
             
             agenda_summaries.append({
                 "agenda_type": agenda_type,
@@ -165,37 +273,75 @@ def generate_minutes(
                 "has_decision": result.get("has_decision", False),
                 "action_items": result.get("action_items", []),
             })
+            
+            logger.debug(
+                "Summarized section",
+                title=section.title[:30],
+                placeholder=placeholder_key,
+                summary_preview=summary_text[:50],
+            )
         
-        # Step 4: Copy agenda template to create result document
-        self.update_state(state="PROGRESS", meta={"progress": 75, "step": "Creating result document"})
+        # =====================================================================
+        # Phase 3: Replacement + Fallback
+        # =====================================================================
+        self.update_state(state="PROGRESS", meta={"progress": 75, "step": "Phase 3: 결과지 작성"})
         
-        source_doc_id = template_doc_id or agenda_doc_id
-        result_doc_title = f"[결과지] {meeting_name}"
+        # Build replacement map
+        replacements = {}
+        for item in summaries:
+            if item["placeholder_key"]:
+                replacements[item["placeholder_key"]] = item["summary"]
         
-        # Use output_folder_id to place result in user's Drive folder
-        # Share with user_email so they can access Service Account created files
-        new_doc = docs_service.copy_document(
-            source_doc_id, 
-            result_doc_title,
-            parent_folder_id=output_folder_id,
-            share_with_email=user_email
+        logger.info(
+            "Prepared replacements",
+            count=len(replacements),
+            keys=list(replacements.keys()),
         )
-        new_doc_id = new_doc.get("id")
         
-        logger.info("Created result document", doc_id=new_doc_id, folder_id=output_folder_id)
-        
-        # Step 5: Replace placeholders with summaries
-        self.update_state(state="PROGRESS", meta={"progress": 85, "step": "Replacing placeholders"})
-        
-        replacements = build_placeholder_map(sections, summaries)
-        
+        # Execute replacements with count tracking
         if replacements:
-            docs_service.replace_text(new_doc_id, replacements)
-            logger.info("Replaced placeholders", count=len(replacements))
+            response, counts = docs_service.replace_text_with_count(new_doc_id, replacements)
+            
+            # Check for failed replacements (0 occurrences changed)
+            failed_placeholders = []
+            for placeholder, count in counts.items():
+                if count == 0:
+                    failed_placeholders.append(placeholder)
+            
+            if failed_placeholders:
+                logger.warning(
+                    "Some placeholders not found, applying fallback",
+                    failed=failed_placeholders,
+                )
+                
+                # Fallback: Append to document end
+                self.update_state(state="PROGRESS", meta={"progress": 85, "step": "Phase 3: Fallback 처리"})
+                
+                fallback_text = "\n\n---\n## 📋 누락된 요약\n"
+                for placeholder in failed_placeholders:
+                    summary = replacements.get(placeholder, "")
+                    # Find title from summaries
+                    title = "Unknown"
+                    for item in summaries:
+                        if item["placeholder_key"] == placeholder:
+                            title = item["title"]
+                            break
+                    fallback_text += f"\n### {title}\n{summary}\n"
+                
+                docs_service.append_text(new_doc_id, fallback_text)
+                logger.info("Appended fallback content to document end")
+            
+            logger.info(
+                "Replacement complete",
+                successful=len(replacements) - len(failed_placeholders),
+                fallback=len(failed_placeholders),
+            )
         
-        self.update_state(state="PROGRESS", meta={"progress": 95, "step": "Finalizing"})
+        # =====================================================================
+        # Finalize
+        # =====================================================================
+        self.update_state(state="PROGRESS", meta={"progress": 95, "step": "완료 처리"})
         
-        # Count statistics
         decisions_count = sum(1 for s in agenda_summaries if s.get("has_decision"))
         action_items_count = sum(len(s.get("action_items", [])) for s in agenda_summaries)
         
@@ -205,21 +351,35 @@ def generate_minutes(
             "output_doc_link": f"https://docs.google.com/document/d/{new_doc_id}/edit",
             "meeting_name": meeting_name,
             "agenda_summaries": agenda_summaries,
-            "items_processed": len(sections),
+            "items_processed": len(h2_sections),
             "decisions_extracted": decisions_count,
             "action_items_extracted": action_items_count,
+            "placeholders_injected": len(placeholders_to_inject),
+            "fallback_applied": len(failed_placeholders) if 'failed_placeholders' in dir() else 0,
         }
         
         logger.info(
-            "Smart Minutes generation completed",
+            "🎉 Smart Minutes v2.0 generation completed",
             meeting_name=meeting_name,
             output_doc_id=new_doc_id,
-            sections=len(sections),
+            sections=len(h2_sections),
             decisions=decisions_count,
         )
         
         return result
         
+    except ValueError as e:
+        # User-friendly errors (RAG validation failures)
+        logger.warning(
+            "Smart Minutes validation failed",
+            error=str(e),
+        )
+        return {
+            "status": "FAILURE",
+            "error": str(e),
+            "meeting_name": meeting_name,
+            "error_type": "VALIDATION",
+        }
     except Exception as e:
         logger.error(
             "Smart Minutes generation failed",
@@ -230,6 +390,7 @@ def generate_minutes(
             "status": "FAILURE",
             "error": str(e),
             "meeting_name": meeting_name,
+            "error_type": "SYSTEM",
         }
 
 

@@ -230,3 +230,132 @@ class GoogleDocsService:
                 )
         
         return result
+
+    def get_document_end_index(self, document_id: str) -> int:
+        """
+        Get the end index of the document body for appending text.
+
+        Args:
+            document_id: The document ID.
+
+        Returns:
+            Character index at the end of the document body.
+        """
+        doc = self.get_document(document_id)
+        body = doc.get("body", {})
+        content = body.get("content", [])
+        
+        if not content:
+            return 1
+        
+        # Find the last element's endIndex
+        last_element = content[-1]
+        return last_element.get("endIndex", 1) - 1  # -1 because we insert before the newline
+
+    def append_text(self, document_id: str, text: str) -> dict[str, Any]:
+        """
+        Append text to the end of a document.
+
+        This is used for Fallback logic when placeholder replacement fails.
+
+        Args:
+            document_id: The document ID.
+            text: Text to append.
+
+        Returns:
+            Batch update response.
+        """
+        end_index = self.get_document_end_index(document_id)
+        
+        requests = [{
+            "insertText": {
+                "location": {"index": end_index},
+                "text": text
+            }
+        }]
+
+        return self.batch_update(document_id, requests)
+
+    def find_text_and_insert_after(
+        self, 
+        document_id: str, 
+        search_text: str, 
+        insert_text: str
+    ) -> dict[str, Any] | None:
+        """
+        Find text in document and insert new text after it.
+        
+        Used for Phase 1: Placeholder Injection.
+        
+        Args:
+            document_id: The document ID.
+            search_text: Text to search for.
+            insert_text: Text to insert after the found text.
+            
+        Returns:
+            Batch update response, or None if text not found.
+        """
+        doc = self.get_document(document_id)
+        content = doc.get("body", {}).get("content", [])
+        
+        # Search for the text position
+        full_text = self.get_document_text(document_id)
+        pos = full_text.find(search_text)
+        
+        if pos == -1:
+            return None
+        
+        # Calculate the actual index in the document structure
+        # Add 1 for the document body start offset, add length of search text
+        insert_index = pos + len(search_text) + 1
+        
+        requests = [{
+            "insertText": {
+                "location": {"index": insert_index},
+                "text": insert_text
+            }
+        }]
+        
+        return self.batch_update(document_id, requests)
+
+    def replace_text_with_count(
+        self, 
+        document_id: str, 
+        replacements: dict[str, str]
+    ) -> tuple[dict[str, Any], dict[str, int]]:
+        """
+        Replace placeholder text and return replacement counts.
+        
+        Used for Phase 3: Replacement with Fallback detection.
+        
+        Args:
+            document_id: The document ID.
+            replacements: Dictionary of placeholder -> replacement text.
+            
+        Returns:
+            Tuple of (response, counts_dict) where counts_dict maps placeholder to occurrences changed.
+        """
+        requests = [
+            {
+                "replaceAllText": {
+                    "containsText": {"text": placeholder, "matchCase": True},
+                    "replaceText": replacement,
+                }
+            }
+            for placeholder, replacement in replacements.items()
+        ]
+        
+        response = self.batch_update(document_id, requests)
+        
+        # Extract occurrence counts from response
+        counts = {}
+        replies = response.get("replies", [])
+        placeholders = list(replacements.keys())
+        
+        for i, reply in enumerate(replies):
+            if i < len(placeholders):
+                count = reply.get("replaceAllText", {}).get("occurrencesChanged", 0)
+                counts[placeholders[i]] = count
+        
+        return response, counts
+

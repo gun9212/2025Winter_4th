@@ -21,28 +21,31 @@
 function callAPI(endpoint, method, payload, options) {
   const config = getConfig();
   const url = config.API_BASE_URL + endpoint;
-  
+
   const fetchOptions = {
-    method: method || 'GET',
-    contentType: 'application/json',
+    method: method || "GET",
+    contentType: "application/json",
     headers: {
-      'X-API-Key': config.API_KEY,
-      'Accept': 'application/json'
+      "X-API-Key": config.API_KEY,
+      Accept: "application/json",
     },
     muteHttpExceptions: true,
-    ...options
+    ...options,
   };
-  
+
   // POST/PUT 요청 시 payload 추가
-  if (payload && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+  if (
+    payload &&
+    (method === "POST" || method === "PUT" || method === "PATCH")
+  ) {
     fetchOptions.payload = JSON.stringify(payload);
   }
-  
+
   try {
     const response = UrlFetchApp.fetch(url, fetchOptions);
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
-    
+
     // 성공 응답 (2xx)
     if (responseCode >= 200 && responseCode < 300) {
       let data = null;
@@ -51,14 +54,14 @@ function callAPI(endpoint, method, payload, options) {
       } catch (e) {
         data = responseText;
       }
-      
+
       return {
         success: true,
         data: data,
-        statusCode: responseCode
+        statusCode: responseCode,
       };
     }
-    
+
     // 에러 응답
     let errorData = null;
     try {
@@ -66,18 +69,22 @@ function callAPI(endpoint, method, payload, options) {
     } catch (e) {
       errorData = { detail: responseText };
     }
-    
+
     // FastAPI validation error는 detail이 배열 형태
     // 예: [{"loc": ["body", "meeting_date"], "msg": "...", "type": "..."}]
     let errorMessage = responseText;
     if (errorData.detail) {
       if (Array.isArray(errorData.detail)) {
         // Validation 에러 배열을 읽기 쉬운 문자열로 변환
-        errorMessage = errorData.detail.map(function(err) {
-          const field = err.loc ? err.loc.slice(1).join('.') : 'unknown';
-          return field + ': ' + (err.msg || err.message || JSON.stringify(err));
-        }).join('; ');
-      } else if (typeof errorData.detail === 'object') {
+        errorMessage = errorData.detail
+          .map(function (err) {
+            const field = err.loc ? err.loc.slice(1).join(".") : "unknown";
+            return (
+              field + ": " + (err.msg || err.message || JSON.stringify(err))
+            );
+          })
+          .join("; ");
+      } else if (typeof errorData.detail === "object") {
         errorMessage = JSON.stringify(errorData.detail);
       } else {
         errorMessage = errorData.detail;
@@ -85,19 +92,18 @@ function callAPI(endpoint, method, payload, options) {
     } else if (errorData.message) {
       errorMessage = errorData.message;
     }
-    
+
     return {
       success: false,
       error: errorMessage,
       errorData: errorData,
-      statusCode: responseCode
+      statusCode: responseCode,
     };
-    
   } catch (error) {
     return {
       success: false,
       error: error.toString(),
-      statusCode: 0
+      statusCode: 0,
     };
   }
 }
@@ -117,18 +123,18 @@ function callAPI(endpoint, method, payload, options) {
 function apiChat(query, sessionId, userLevel, options) {
   // sessionId가 없으면 새로 생성
   const finalSessionId = sessionId || generateUUID();
-  
+
   const payload = {
     query: query,
     session_id: finalSessionId,
     user_level: userLevel || 4,
     options: options || {
       max_results: 5,
-      include_sources: true
-    }
+      include_sources: true,
+    },
   };
-  
-  return callAPI('/chat', 'POST', payload);
+
+  return callAPI("/chat", "POST", payload);
 }
 
 /**
@@ -137,7 +143,7 @@ function apiChat(query, sessionId, userLevel, options) {
  * @returns {Object} 히스토리
  */
 function apiGetChatHistory(sessionId) {
-  return callAPI('/chat/history/' + sessionId, 'GET');
+  return callAPI("/chat/history/" + sessionId, "GET");
 }
 
 /**
@@ -146,7 +152,7 @@ function apiGetChatHistory(sessionId) {
  * @returns {Object} 결과
  */
 function apiDeleteChatHistory(sessionId) {
-  return callAPI('/chat/history/' + sessionId, 'DELETE');
+  return callAPI("/chat/history/" + sessionId, "DELETE");
 }
 
 // ============================================
@@ -167,10 +173,10 @@ function apiRagSearch(query, topK, generateAnswer, userLevel) {
     top_k: topK || 10,
     user_level: userLevel || 4,
     include_context: true,
-    generate_answer: generateAnswer !== false
+    generate_answer: generateAnswer !== false,
   };
 
-  return callAPI('/rag/search', 'POST', payload);
+  return callAPI("/rag/search", "POST", payload);
 }
 
 /**
@@ -185,12 +191,12 @@ function apiIngestFolder(folderId, options, userLevel) {
     folder_id: folderId,
     options: options || {
       recursive: true,
-      file_types: ['google_doc', 'pdf', 'docx']
+      file_types: ["google_doc", "pdf", "docx"],
     },
-    user_level: userLevel || 4
+    user_level: userLevel || 4,
   };
 
-  return callAPI('/rag/ingest/folder', 'POST', payload);
+  return callAPI("/rag/ingest/folder", "POST", payload);
 }
 
 /**
@@ -201,11 +207,12 @@ function apiIngestFolder(folderId, options, userLevel) {
  * @returns {Object} 문서 목록
  */
 function apiGetDocuments(skip, limit, status) {
-  let endpoint = '/rag/documents?skip=' + (skip || 0) + '&limit=' + (limit || 20);
+  let endpoint =
+    "/rag/documents?skip=" + (skip || 0) + "&limit=" + (limit || 20);
   if (status) {
-    endpoint += '&status=' + status;
+    endpoint += "&status=" + status;
   }
-  return callAPI(endpoint, 'GET');
+  return callAPI(endpoint, "GET");
 }
 
 // ============================================
@@ -213,62 +220,89 @@ function apiGetDocuments(skip, limit, status) {
 // ============================================
 
 /**
- * 결과지 생성 요청
+ * 결과지 생성 요청 (v2.0)
  * @param {Object} params - 생성 파라미터
  * @returns {Object} task_id 포함 응답
- * 
- * Backend Validator Note:
- * - transcript_doc_id 또는 transcript_text 중 하나는 반드시 제공해야 함
- * - 둘 다 없으면 422 Validation Error 발생
- * - meeting_date는 'YYYY-MM-DD' 형식의 문자열로 전송 (ISO date)
+ *
+ * v2.0 Smart Minutes Architecture:
+ * - source_document_id (필수): RAG 파이프라인으로 처리된 DB 문서 ID
+ * - transcript_doc_id, transcript_text: DEPRECATED (하위 호환용 유지)
+ * - meeting_date: 'YYYY-MM-DD' 형식 문자열
  */
 function apiGenerateMinutes(params) {
-  // transcript 소스 검증: doc_id나 text 중 하나는 필수
-  const transcriptDocId = params.transcriptDocId && params.transcriptDocId.trim() !== '' 
-    ? params.transcriptDocId.trim() 
+  // v2.0: source_document_id 필수 검증
+  const sourceDocumentId = params.sourceDocumentId
+    ? parseInt(params.sourceDocumentId, 10)
     : null;
-  const transcriptText = params.transcriptText && params.transcriptText.trim() !== ''
-    ? params.transcriptText.trim()
-    : null;
-  
-  // 프론트엔드에서 사전 검증 (둘 다 없으면 에러)
-  if (!transcriptDocId && !transcriptText) {
+
+  // Type Safety: NaN 방어
+  if (!sourceDocumentId || isNaN(sourceDocumentId) || sourceDocumentId <= 0) {
     return {
       success: false,
-      error: '속기록이 필요합니다. 속기록 문서를 선택하거나 텍스트를 직접 입력해주세요.',
-      statusCode: 0
+      error:
+        "속기록을 선택해주세요.\n\nRAG 자료학습이 완료된 문서만 사용 가능합니다.\n문서가 목록에 없다면 Admin 탭에서 먼저 자료학습을 진행해주세요.",
+      statusCode: 0,
     };
   }
-  
+
   // meeting_date가 Date 객체면 YYYY-MM-DD로 변환
   let meetingDate = params.meetingDate;
   if (meetingDate instanceof Date) {
-    meetingDate = formatDate(meetingDate, 'YYYY-MM-DD');
+    meetingDate = formatDate(meetingDate, "YYYY-MM-DD");
   }
-  
+
   // 현재 사용자 이메일 가져오기 (Service Account 모드에서 파일 공유용)
   const userEmail = Session.getActiveUser().getEmail();
-  
+
+  // v2.0 Payload: source_document_id 사용
   const payload = {
     agenda_doc_id: params.agendaDocId,
-    transcript_doc_id: transcriptDocId,
-    transcript_text: transcriptText,
-    template_doc_id: params.templateDocId && params.templateDocId.trim() !== '' 
-      ? params.templateDocId.trim() 
-      : null,
+    source_document_id: sourceDocumentId, // v2.0 필수
+    agenda_document_id: params.agendaDocumentId
+      ? parseInt(params.agendaDocumentId, 10)
+      : null, // v2.0 선택
+    template_doc_id:
+      params.templateDocId && params.templateDocId.trim() !== ""
+        ? params.templateDocId.trim()
+        : null,
     meeting_name: params.meetingName,
     meeting_date: meetingDate,
-    output_folder_id: params.outputFolderId && params.outputFolderId.trim() !== ''
-      ? params.outputFolderId.trim()
-      : null,
-    output_doc_id: params.outputDocId && params.outputDocId.trim() !== ''
-      ? params.outputDocId.trim()
-      : null,
+    output_folder_id:
+      params.outputFolderId && params.outputFolderId.trim() !== ""
+        ? params.outputFolderId.trim()
+        : null,
+    output_doc_id:
+      params.outputDocId && params.outputDocId.trim() !== ""
+        ? params.outputDocId.trim()
+        : null,
     user_level: params.userLevel || 2,
-    user_email: userEmail || null
+    user_email: userEmail || null,
   };
-  
-  return callAPI('/minutes/generate', 'POST', payload);
+
+  console.log("[apiGenerateMinutes] v2.0 Request:", {
+    agenda_doc_id: payload.agenda_doc_id,
+    source_document_id: payload.source_document_id,
+    meeting_name: payload.meeting_name,
+  });
+
+  return callAPI("/minutes/generate", "POST", payload);
+}
+
+/**
+ * RAG 학습 완료 문서 목록 조회
+ * @param {number} skip - 페이지네이션 오프셋
+ * @param {number} limit - 페이지 크기
+ * @returns {Object} 문서 목록 { success, data: { documents: [...] } }
+ */
+function apiGetRagDocuments(skip, limit) {
+  // COMPLETED 상태의 문서만 조회 (RAG 학습 완료)
+  const endpoint =
+    "/rag/documents?skip=" +
+    (skip || 0) +
+    "&limit=" +
+    (limit || 100) +
+    "&status=COMPLETED";
+  return callAPI(endpoint, "GET");
 }
 
 /**
@@ -277,7 +311,7 @@ function apiGenerateMinutes(params) {
  * @returns {Object} 상태 정보
  */
 function apiGetMinutesStatus(taskId) {
-  return callAPI('/minutes/' + taskId + '/status', 'GET');
+  return callAPI("/minutes/" + taskId + "/status", "GET");
 }
 
 // ============================================
@@ -293,18 +327,18 @@ function apiGetMinutesStatus(taskId) {
 function apiExtractTodos(resultDocId, includeContext) {
   const payload = {
     result_doc_id: resultDocId,
-    include_context: includeContext !== false
+    include_context: includeContext !== false,
   };
-  
-  return callAPI('/calendar/extract-todos', 'POST', payload);
+
+  return callAPI("/calendar/extract-todos", "POST", payload);
 }
 
 /**
  * 캘린더 이벤트 생성 (GAS Native - Backend 우회)
- * 
+ *
  * Backend API 대신 GAS의 CalendarApp을 직접 사용하여
  * 사용자 권한으로 캘린더에 이벤트를 등록합니다.
- * 
+ *
  * @param {Object} eventData - 이벤트 데이터
  * @param {string} eventData.summary - 이벤트 제목
  * @param {string} eventData.dtStart - 시작 시간 (ISO String, e.g., "2026-02-04T10:00:00")
@@ -313,7 +347,7 @@ function apiExtractTodos(resultDocId, includeContext) {
  * @param {string} [eventData.assigneeEmail] - 담당자 이메일 (게스트로 초대)
  * @param {string} [eventData.calendarId] - 캘린더 ID (기본값: primary)
  * @returns {Object} 결과 { success, eventId, htmlLink, error }
- * 
+ *
  * @example
  * const result = apiCreateCalendarEvent({
  *   summary: "축제 가수 섭외",
@@ -348,10 +382,10 @@ function apiGenerateHandover(params) {
     include_event_summaries: params.includeEventSummaries !== false,
     include_insights: params.includeInsights !== false,
     include_statistics: params.includeStatistics !== false,
-    user_level: params.userLevel || 1
+    user_level: params.userLevel || 1,
   };
-  
-  return callAPI('/handover/generate', 'POST', payload);
+
+  return callAPI("/handover/generate", "POST", payload);
 }
 
 /**
@@ -360,7 +394,7 @@ function apiGenerateHandover(params) {
  * @returns {Object} 상태 정보
  */
 function apiGetHandoverStatus(taskId) {
-  return callAPI('/handover/' + taskId + '/status', 'GET');
+  return callAPI("/handover/" + taskId + "/status", "GET");
 }
 
 // ============================================
@@ -373,7 +407,7 @@ function apiGetHandoverStatus(taskId) {
  * @returns {Object} 상태 정보
  */
 function apiGetTaskStatus(taskId) {
-  return callAPI('/tasks/' + taskId, 'GET');
+  return callAPI("/tasks/" + taskId, "GET");
 }
 
 /**
@@ -382,7 +416,7 @@ function apiGetTaskStatus(taskId) {
  * @returns {Object} 결과
  */
 function apiCancelTask(taskId) {
-  return callAPI('/tasks/' + taskId, 'DELETE');
+  return callAPI("/tasks/" + taskId, "DELETE");
 }
 
 // ============================================
@@ -394,9 +428,9 @@ function apiCancelTask(taskId) {
  * @returns {string} UUID v4
  */
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
@@ -409,18 +443,18 @@ function generateUUID() {
  */
 function formatDate(date, format) {
   const d = date instanceof Date ? date : new Date(date);
-  
+
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  
-  if (format === 'YYYY-MM-DD HH:mm:ss') {
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+
+  if (format === "YYYY-MM-DD HH:mm:ss") {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
-  
+
   return `${year}-${month}-${day}`;
 }
 
@@ -451,9 +485,9 @@ function isValidEmail(email) {
  */
 function isEmpty(value) {
   if (value === null || value === undefined) return true;
-  if (typeof value === 'string') return value.trim() === '';
+  if (typeof value === "string") return value.trim() === "";
   if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === 'object') return Object.keys(value).length === 0;
+  if (typeof value === "object") return Object.keys(value).length === 0;
   return false;
 }
 
@@ -465,7 +499,7 @@ function isEmpty(value) {
 function logError(functionName, error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[${functionName}] Error: ${message}`);
-  
+
   // 필요시 Stackdriver Logging 사용
   // Logger.log(`[${functionName}] Error: ${message}`);
 }
@@ -501,5 +535,5 @@ function deepCopy(obj) {
  */
 function truncateText(text, maxLength) {
   if (!text || text.length <= maxLength) return text;
-  return text.substring(0, maxLength - 3) + '...';
+  return text.substring(0, maxLength - 3) + "...";
 }
