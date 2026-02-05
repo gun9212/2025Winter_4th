@@ -1136,14 +1136,57 @@
     document
       .getElementById("start-ingest-btn")
       .addEventListener("click", startIngestion);
+    // Optional Chaining: Settings 카드가 hidden이어도 요소는 존재하지만 안전하게 처리
     document
       .getElementById("save-settings-btn")
-      .addEventListener("click", saveSettings);
+      ?.addEventListener("click", saveSettings);
     document
       .getElementById("refresh-docs-btn")
       .addEventListener("click", loadDocuments);
 
+    // Permission Debugger: 사용자 권한 정보 로드
+    loadUserProfile();
+    
     // Note: Handover 관련 이벤트 리스너는 initDocsTab()에서 처리 (Docs 탭으로 이동됨)
+  }
+
+  /**
+   * 사용자 권한 정보 로드 (Permission Debugger)
+   */
+  function loadUserProfile() {
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        const container = document.getElementById("user-profile-content");
+        if (container && profile) {
+          const levelBadge = profile.isAdmin 
+            ? '<span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-medium">👑 회장단 (Level 1)</span>'
+            : '<span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">Level ' + profile.level + '</span>';
+          
+          const handoverBadge = profile.canCreateHandover
+            ? '<span class="text-green-600 text-xs ml-2">✓ 인수인계서 생성 가능</span>'
+            : '<span class="text-gray-400 text-xs ml-2">✗ 인수인계서 생성 불가</span>';
+          
+          container.innerHTML = `
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-gray-500">📧</span>
+              <span class="font-medium text-gray-700">${escapeHtml(profile.email)}</span>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-gray-500">🔐</span>
+              ${levelBadge}
+              ${handoverBadge}
+            </div>
+          `;
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error("[Council-AI] Failed to load user profile:", error);
+        const container = document.getElementById("user-profile-content");
+        if (container) {
+          container.innerHTML = '<p class="text-red-500 text-xs">권한 정보를 불러올 수 없습니다.</p>';
+        }
+      })
+      .getCurrentUserProfile();
   }
 
   function startIngestion() {

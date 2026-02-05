@@ -39,7 +39,8 @@ def run_async(coro):
 def generate_minutes(
     self,
     agenda_doc_id: str,
-    transcript_doc_id: str | None = None,
+    source_document_id: int | None = None,  # NEW: DB document ID (preferred)
+    transcript_doc_id: str | None = None,   # DEPRECATED: Google Docs ID
     transcript_text: str | None = None,
     template_doc_id: str | None = None,
     meeting_name: str = "Untitled Meeting",
@@ -51,7 +52,7 @@ def generate_minutes(
     Generate a result document from agenda template and meeting transcript.
     
     Smart Minutes Feature Implementation:
-    1. Load transcript from Google Docs (if doc_id provided) or use text
+    1. Load transcript from DB (preferred) or Google Docs or use text
     2. Split transcript by agenda headers using text_utils
     3. Summarize each section with Gemini
     4. Copy agenda template to create result document
@@ -59,7 +60,8 @@ def generate_minutes(
     
     Args:
         agenda_doc_id: Google Docs ID of agenda template (안건지)
-        transcript_doc_id: Google Docs ID of transcript (속기록) - preferred
+        source_document_id: DB Document ID (속기록) - PREFERRED
+        transcript_doc_id: Google Docs ID of transcript - DEPRECATED
         transcript_text: Direct transcript text (fallback)
         template_doc_id: Optional template for result (if None, copies agenda)
         meeting_name: Meeting name for output document
@@ -86,6 +88,7 @@ def generate_minutes(
             "Starting Smart Minutes generation",
             meeting_name=meeting_name,
             agenda_doc_id=agenda_doc_id[:8],
+            source_document_id=source_document_id,
             has_transcript_doc=bool(transcript_doc_id),
             user_email=user_email,
         )
@@ -93,14 +96,35 @@ def generate_minutes(
         # Step 1: Load transcript content
         self.update_state(state="PROGRESS", meta={"progress": 10, "step": "Loading transcript"})
         
-        if transcript_doc_id:
+        if source_document_id:
+            # NEW: DB 조회 방식 (PREFERRED)
+            from sqlalchemy import select
+            from app.models.document import Document, DocumentStatus
+            
+            async def _fetch_from_db():
+                async with async_session_factory() as db:
+                    result = await db.execute(
+                        select(Document).where(Document.id == source_document_id)
+                    )
+                    doc = result.scalar_one_or_none()
+                    if not doc:
+                        raise ValueError(f"Document {source_document_id} not found in database")
+                    if doc.status != DocumentStatus.COMPLETED:
+                        raise ValueError(f"Document {source_document_id} is not COMPLETED (status: {doc.status})")
+                    if not doc.preprocessed_content:
+                        raise ValueError(f"Document {source_document_id} has no preprocessed_content")
+                    return doc.preprocessed_content
+            
+            transcript_content = run_async(_fetch_from_db())
+            logger.info("Loaded transcript from DB", document_id=source_document_id, length=len(transcript_content))
+        elif transcript_doc_id:
             transcript_content = docs_service.get_document_text(transcript_doc_id)
-            logger.info("Loaded transcript from Google Docs", length=len(transcript_content))
+            logger.info("Loaded transcript from Google Docs (deprecated)", length=len(transcript_content))
         elif transcript_text:
             transcript_content = transcript_text
             logger.info("Using provided transcript text", length=len(transcript_content))
         else:
-            raise ValueError("Either transcript_doc_id or transcript_text must be provided")
+            raise ValueError("Either source_document_id, transcript_doc_id, or transcript_text must be provided")
         
         # Step 2: Split transcript by headers
         self.update_state(state="PROGRESS", meta={"progress": 20, "step": "Splitting by agenda"})
