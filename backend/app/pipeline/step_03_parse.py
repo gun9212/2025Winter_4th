@@ -150,11 +150,37 @@ class ParsingService:
             file_content, filename, output_format
         )
 
-        # Extract basic content
+        # Extract basic content using defensive parsing
         content = upstage_result.get("content", {})
-        html_content = content.get("html", "") if isinstance(content, dict) else str(content)
-        markdown_content = content.get("markdown", "") if isinstance(content, dict) else ""
-        text_content = content.get("text", "") if isinstance(content, dict) else ""
+        
+        # Try to extract content from different possible response structures
+        if isinstance(content, dict):
+            # If content is a dict, try to get html/markdown/text keys
+            html_content = content.get("html", "")
+            markdown_content = content.get("markdown", "")
+            text_content = content.get("text", "")
+            
+            # If all empty, use _extract_text_content as fallback
+            if not (html_content or markdown_content or text_content):
+                extracted = self._extract_text_content(content)
+                # If we got extracted text, use it for all fields
+                if extracted:
+                    html_content = extracted
+                    markdown_content = extracted
+                    text_content = extracted
+        else:
+            # If content is not a dict, use _extract_text_content
+            extracted = self._extract_text_content(content)
+            html_content = extracted
+            markdown_content = extracted
+            text_content = extracted
+        
+        logger.debug(
+            "[PARSER] Content extracted",
+            html_len=len(html_content),
+            markdown_len=len(markdown_content),
+            text_len=len(text_content),
+        )
 
         # Step 2: Process elements
         elements = []
