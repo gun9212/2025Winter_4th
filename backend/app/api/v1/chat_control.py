@@ -27,16 +27,18 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 # Google Drive ID pattern: alphanumeric with underscores/hyphens, typically 25-50 chars
+import urllib.parse
+
 # Relaxed pattern for Google Drive IDs (allow a bit more flexibility)
 _DRIVE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{15,100}$")
 
 
 def _build_drive_link(drive_id: str | None) -> str | None:
     """
-    Build a Google Drive link if drive_id is valid.
+    Build a Google Drive link.
     
-    Handles 'local:' prefix if present.
-    Returns None if drive_id is missing.
+    If drive_id looks like a path (contains '/'), returns a search link for the filename.
+    Otherwise, assumes it's a Drive File ID and returns a direct link.
     """
     if not drive_id:
         return None
@@ -45,12 +47,18 @@ def _build_drive_link(drive_id: str | None) -> str | None:
     if drive_id.startswith("local:"):
         drive_id = drive_id.replace("local:", "")
         
+    # Case 1: It's a file path -> Generate Search Link
+    if "/" in drive_id:
+        filename = drive_id.split("/")[-1]
+        encoded_name = urllib.parse.quote(filename)
+        return f"https://drive.google.com/drive/search?q={encoded_name}"
+
+    # Case 2: It's likely a File ID -> Generate Direct Link
     # Basic validation: must be reasonably long and alphanumeric
     if len(drive_id) < 15:
         return None
         
-    # Try to match pattern, but don't be too strict if it looks like a valid ID string
-    # Just checking for clearly invalid characters
+    # Special characters check
     if any(c for c in drive_id if not (c.isalnum() or c in "_-")):
         return None
 
